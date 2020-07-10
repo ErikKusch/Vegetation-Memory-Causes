@@ -82,9 +82,9 @@ FUN_EVI <- function(){
   Dates_vec <- unique(Dates_vec) # reduce Dates_vec to singular mentions of each date
   Dir.Fixed <- file.path(Dir.EVI, "FIXEDEVI") # create a working directory for the fixed MOD13A2 files, this is needed in case FUN_EVI gets interrupted and needs to be started again
   dir.create(Dir.Fixed) # create Dir.Fixed on hard drive
-  cl <- makeCluster(numberOfCores) # Assuming X node cluster
-  registerDoParallel(cl) # registering cores
-  foreach(MOD_Iter = 1:length(Dates_vec)) %dopar% { # loop: over all Dates in the MOD13A2 data
+  cl <- parallel::makeCluster(numberOfCores) # Assuming X node cluster
+  doParallel::registerDoParallel(cl) # registering cores
+  foreach::foreach(MOD_Iter = 1:length(Dates_vec)) %dopar% { # loop: over all Dates in the MOD13A2 data
     Iter_fs <- GEE_fs[startsWith(x = GEE_fs, Dates_vec[MOD_Iter])] # identify the files for this date
     West <- raster::raster(Iter_fs[1]) # load the bigger, western .tif
     East <- raster::raster(Iter_fs[2]) # load the smaller, eastern .tif
@@ -95,8 +95,8 @@ FUN_EVI <- function(){
     unlink(x = Iter_fs, recursive = TRUE) # delete GEE .tifs from the hard drive to save space
   } # end of loop
   stopCluster(cl)
-  ## file.copy(list.files(Dir.Fixed), from = Dir.Fixed, to = Dir.EVI) # copy fixed output to evi directory
-  ## unlink(Dir.Fixed, recursive = TRUE) # remove fixed directory
+  file.copy(from = file.path(Dir.Fixed, list.files(Dir.Fixed)), to = file.path(Dir.EVI, list.files(Dir.Fixed))) # copy fixed output to evi directory
+  unlink(Dir.Fixed, recursive = TRUE) # remove fixed directory
 } # end of FUN_EVI
 setwd(Dir.EVI)
 Dates_vec <- gsub("-.*.", "", list.files(pattern = ".tif")) # retain only dates of file names (YYYY_MM_DD)
@@ -106,30 +106,44 @@ while(length(Dates_vec) != length(unique(Dates_vec))){ # MOD13A2 Product Check: 
 setwd(mainDir)
 
 ####--------------- CLIMATE DATA DOWNLOAD ------------------------------------------
-Dates_vec2 <- gsub(pattern = "_", replacement = "-", x = Dates_vec) # change underscores to dashes for easier conversion to date format
-Vars_vec <- c("2m_temperature", "volumetric_soil_water_layer_1") # Variables we want to download
-VarsAbbr_vec <- c("AT", "SM") # Abbreviations to use as suffix when storing files
-for(Dates_Iter in 1:length(Dates_vec)){ # Dates loop: loop over all 16-day time slots in the MOD13A2 data
-  for(Var_Iter in 1:length(Vars_vec)){ # Variable loop: loop over the climatic variables we want to download
-    Clim_ras <- KrigR::download_ERA(Variable = Vars_vec[Var_Iter],
-                                Type = "reanalysis",
-                                DataSet = "era5-land",
-                                DateStart = as.Date(Dates_vec2[Dates_Iter]),
-                                DateStop = as.Date(Dates_vec2[Dates_Iter])+15,
-                                TResolution = "day",
-                                TStep = 16,
-                                Dir = Dir.ERA,
-                                FileName = Dates_vec[Dates_Iter],
-                                API_User = API_User,
-                                API_Key = API_Key)
-    raster::writeRaster(AT_ras, filename = file.path(Dir.ERA, paste0(VarsAbbr_vec[Dates_Iter], Dates_vec[Dates_Iter])), format = "GTiff", overwrite = TRUE) # write the raster as a .tif
-    unlink(file.path(Dir.ERA, paste0(Dates_vec[Dates_Iter], ".nc"))) # remove the netcdf that's exported by donwload_ERA
-  } # end of Variable loop
-} # end of Dates loop
+FUN_DownloadCLIM <- function(Var_long = "2m_temperature", Var_short = "AT"){
+  setwd(Dir.EVI)
+  Dates_vec <- gsub("-.*.", "", list.files(pattern = ".tif"))
+  Dates_vec2 <- gsub(pattern = "_", replacement = "-", x = Dates_vec) # change underscores to dashes for easier conversion to date format
+  cl <- parallel::makeCluster(numberOfCores) # Assuming X node cluster
+  doParallel::registerDoParallel(cl) # registering cores
+  setwd(Dir.ERA)
+  foreach::foreach(Dates_Iter = 1:length(Dates_vec), .packages = c("KrigR"), .export = c("Dir.ERA", "API_User", "API_Key", "Var_long", "Var_short", "Dates_vec", "Dates_vec2")) %dopar% { # Dates loop: loop over all 16-day time slots in the MOD13A2 data
+    if(file.exists(file.path(Dir.ERA, paste0(Var_short, Dates_vec[Dates_Iter], ".tif")))){ # file check: if file has already been downloaded
+      next() 
+    } # end of file check
+      Clim_ras <- KrigR::download_ERA(Variable = Var_long,
+                                      Type = "reanalysis",
+                                      DataSet = "era5-land",
+                                      DateStart = as.Date(Dates_vec2[Dates_Iter]),
+                                      DateStop = as.Date(Dates_vec2[Dates_Iter])+15,
+                                      TResolution = "day",
+                                      TStep = 16,
+                                      Dir = Dir.ERA,
+                                      FileName = Dates_vec[Dates_Iter],
+                                      API_User = API_User,
+                                      API_Key = API_Key)
+      raster::writeRaster(Clim_ras, filename = file.path(Dir.ERA, paste0(Var_short, Dates_vec[Dates_Iter])), format = "GTiff", overwrite = TRUE) # write the raster as a .tif
+      unlink(file.path(Dir.ERA, paste0(Dates_vec[Dates_Iter], ".nc"))) # remove the netcdf that's exported by donwload_ERA
+  } # end of Dates loop
+  parallel::stopCluster(cl)
+} # end of FUN_DownloadCLIM
+setwd(Dir.ERA)
+ERA_fs <- list.files(pattern = ".tif") # list all tif files in ERA directory
+if(length(ERA_fs) < length(Dates_vec)*2){ # ERA Product Check: if we do not have twice as many ERA files as MOD13A2 files
+  FUN_DownloadCLIM(Var_long = "2m_temperature", Var_short = "AT") # download airtemp data
+  FUN_DownloadCLIM(Var_long = "volumetric_soil_water_layer_1", Var_short = "SM") # download qsoil1 data
+} # end of ERA Product Check
+
 
 ####--------------- COVARIATE DATA DOWNLOAD ----------------------------------------
-KrigR::download_DEM(Train_ras = Clim_ras,
-                    Target_ras = raster::raster(file.path(Dir.EVI, list.files(Dir.EVI)[1])),
+Covs_ls <- KrigR::download_DEM(Train_ras = Clim_ras,
+                    Target_res = raster::raster(file.path(Dir.EVI, list.files(Dir.EVI)[1])),
                     Dir = Dir.COV,
                     Keep_Temporary = TRUE
                     )
