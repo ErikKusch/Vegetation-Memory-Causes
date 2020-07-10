@@ -200,15 +200,9 @@ for(Dates_Iter in 1:length(Clim_fs)){ # Dates loop: loop over all dates for whic
   cl <- parallel::makeCluster(numberOfCores) # Assuming X node cluster
   doParallel::registerDoParallel(cl) # registering cores
   foreach::foreach(Krig_Iter = 1:length(Extents), .packages = c("KrigR"), .export = c("Dir.ERA", "Covs_ls", "Clim_train", "Land_shp", "Var_short", "Extents", "ProgBar", "Dir.Date")) %dopar% { # tiles loop: loop over all tiles
-    # 
-    # 
-    # 
-    # 
-    # 
-    # for(Krig_Iter in 1:length(Extents)){ # delete me!!
-    #   
-    #   
-    #   
+    if(file.exists(Dir.Date, paste0(Names_tiles[Krig_Iter], ".nc"))){ # file check: if this file has already been kriged
+      next()
+    } # end of file check
       cropped_train <- raster::crop(Clim_train, Extents[[Krig_Iter]]) # crop training data
       raster::extent(cropped_train) <- Extents[[Krig_Iter]] # set extent of cropped training data (necessary because of rounding issues in late decimal points)
       cropped_shp <- raster::crop(Land_shp, Extents[[Krig_Iter]]) # crop land mask shapefile
@@ -223,21 +217,15 @@ for(Dates_Iter in 1:length(Clim_fs)){ # Dates loop: loop over all dates for whic
           Covariates_fine = Covs_target,
           Cores = 1,
           Dir = Dir.Date,
-          FileName = RegionFiles[[Krig_Iter]],
+          FileName = Names_tiles[Krig_Iter],
           Keep_Temporary = FALSE
         ), 
         silent=TRUE)
-      # 
-      # 
-      # 
-      # setTxtProgressBar(ProgBar, Krig_Iter)} # delete me!!
-      # 
-      # 
     setTxtProgressBar(ProgBar, Krig_Iter) # update progress bar  
   } # end of tiles loop
   stopCluster(cl) # stop cluster
   setwd(Dir.Date)
-  Krig_fs <- list.files(pattern = ".tif")[startsWith(prefix = Var_short, x = list.files(pattern = ".tif"))] # list all data tiles of current date
+  Krig_fs <- list.files(pattern = ".tif")[startsWith(prefix = "TempFile", x = list.files(pattern = ".tif"))] # list all data tiles of current date
   SE_fs <- list.files(pattern = ".tif")[startsWith(prefix = "SE", x = list.files(pattern = ".tif"))] # list all uncertainty tiles of current date
   
   
