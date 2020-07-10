@@ -72,6 +72,9 @@ and export the .tif files produced into ./X - Data/1 - EVI ")
 
 ####--------------- VEGETATION DATA ------------------------------------------------
 FUN_EVI <- function(){
+  setwd(Dir.EVI)
+  GEE_fs <- list.files(pattern = ".tif") # identify all files with a .tif ending
+  Dates_vec <- gsub("-.*.", "", GEE_fs) # retain only dates of file names (YYYY_MM_DD)
   Fails_Doubles <- names(table(Dates_vec)[which(table(Dates_vec) != 2)]) # identify all dates for which we don't have exactly 2 .tif files (which is what we get from GEE)
   if(length(Fails_Doubles) > 0){ # fail check: if we don't have exactly 2 .tif files for each date
     stop(paste("You are missing one of the files associated with the following time steps:", paste(Fails_Doubles, collapse = ",")))
