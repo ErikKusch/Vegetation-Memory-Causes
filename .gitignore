@@ -3,19 +3,9 @@
 
 # But not these files...
 !.gitignore
-!Y - Codes/*.R
-!Y - Codes/*/*.R
 !*.R
 
-# ...even if they are in subdirectories
-!*/
-!*/*/
-!*/*/*/
-
-# but not the COMPADRE codes by Rob
-*Presentations
 *X - Data
-
-
+*PersonalSettings.R
 
 .Rproj.user
