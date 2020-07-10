@@ -61,14 +61,14 @@ setwd(Dir.EVI)
 GEE_fs <- list.files(pattern = ".tif") # identify all files with a .tif ending
 Dates_vec <- gsub("-.*.", "", GEE_fs) # retain only dates of file names (YYYY_MM_DD)
 if(length(Dates_vec) == 0){ # GEE Check: if no .tifs are present in EVI directory
-    stop("Please download the MOD13A2 data set using the Google Earth Engine (GEE) with the following code:
+  stop("Please download the MOD13A2 data set using the Google Earth Engine (GEE) with the following code:
    var batch = require('users/fitoprincipe/geetools:batch');
    var dataset = ee.ImageCollection('MODIS/006/MOD13A2')
    .filterDate('2001-01-01', '2020-01-01');
    var EVI = dataset.select('EVI');
    batch.Download.ImageCollection.toDrive(EVI, 'MOD13A2_EVI');
 and export the .tif files produced into ./X - Data/1 - EVI ")
-  } # end of GEE Check
+} # end of GEE Check
 
 ####--------------- VEGETATION DATA ------------------------------------------------
 FUN_EVI <- function(){
@@ -108,17 +108,17 @@ setwd(mainDir)
 
 ####--------------- CLIMATE DATA ---------------------------------------------------
 AT_1 <- KrigR::download_ERA(Variable = "2m_temperature",
-                    Type = "reanalysis",
-                    DataSet = "era5-land",
-                    DateStart = "2001-01-01",
-                    DateStop = "2004-12-31",
-                    TResolution = "day",
-                    TStep = 16,
-                    Extent = extent(-180, 180, -90, 90),
-                    Dir = Dir.ERA,
-                    FileName = "2m_temperature_raw.nc",
-                    API_User = API_User,
-                    API_Key = API_Key)
+                            Type = "reanalysis",
+                            DataSet = "era5-land",
+                            DateStart = "2001-01-01",
+                            DateStop = "2004-12-31",
+                            TResolution = "day",
+                            TStep = 16,
+                            Extent = extent(-180, 180, -90, 90),
+                            Dir = Dir.ERA,
+                            FileName = "2m_temperature_raw.nc",
+                            API_User = API_User,
+                            API_Key = API_Key)
 
 ### repeat this a few times until full 01_01-2001 to 31_12_2019 coverage is established
 extent(train) <- extent(-180,180,-90,90)
