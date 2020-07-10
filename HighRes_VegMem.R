@@ -30,7 +30,6 @@ Dir.Mask <- paste(Dir.Data, "/6 - ShapeFiles", sep="")
 if(!dir.exists(Dir.Mask)){dir.create(Dir.Mask)}
 
 ####--------------- CHECKS & PREPARATIONS ------------------------------------------
-
 source("PersonalSettings.R") # I do this here to specify number of cores and API credentials and am thus not sharing this file
 
 #### CDS API (needed for ERA5-Land downloads)
@@ -57,11 +56,22 @@ if(!file.exists(file.path(Dir.Mask, "systems_dryland"))){
 }
 Drylands_shp <- raster::shapefile(file.path(Dir.Mask, "systems_dryland", "dryland_2"))
 
+#### GEE MOD13A2 CHECK
+setwd(Dir.EVI)
+GEE_fs <- list.files(pattern = ".tif") # identify all files with a .tif ending
+Dates_vec <- gsub("-.*.", "", GEE_fs) # retain only dates of file names (YYYY_MM_DD)
+if(length(Dates_vec) == 0){ # GEE Check: if no .tifs are present in EVI directory
+    stop("Please download the MOD13A2 data set using the Google Earth Engine (GEE) with the following code:
+   var batch = require('users/fitoprincipe/geetools:batch');
+   var dataset = ee.ImageCollection('MODIS/006/MOD13A2')
+   .filterDate('2001-01-01', '2020-01-01');
+   var EVI = dataset.select('EVI');
+   batch.Download.ImageCollection.toDrive(EVI, 'MOD13A2_EVI');
+and export the .tif files produced into ./X - Data/1 - EVI ")
+  } # end of GEE Check
+
 ####--------------- VEGETATION DATA ------------------------------------------------
 FUN_EVI <- function(){
-  setwd(Dir.EVI) # set working directory to MOD13A2 folder, the .tiff files therein have been downloaded via the Google Earth Engine (GEE), there should be 874
-  GEE_fs <- list.files(pattern = ".tif") # identify all files with a .tif ending
-  Dates_vec <- gsub("-.*.", "", GEE_fs) # retain only dates of file names (YYYY_MM_DD)
   Fails_Doubles <- names(table(Dates_vec)[which(table(Dates_vec) != 2)]) # identify all dates for which we don't have exactly 2 .tif files (which is what we get from GEE)
   if(length(Fails_Doubles) > 0){ # fail check: if we don't have exactly 2 .tif files for each date
     stop(paste("You are missing one of the files associated with the following time steps:", paste(Fails_Doubles, collapse = ",")))
@@ -82,13 +92,15 @@ FUN_EVI <- function(){
     unlink(x = Iter_fs, recursive = TRUE) # delete GEE .tifs from the hard drive to save space
   } # end of loop
   stopCluster(cl)
-  ## file.copy() from Dir.Fixed
-  ## unlink Dir.Fixed
+  ## file.copy(list.files(Dir.Fixed), from = Dir.Fixed, to = Dir.EVI) # copy fixed output to evi directory
+  ## unlink(Dir.Fixed, recursive = TRUE) # remove fixed directory
 } # end of FUN_EVI
-
-if(){ # check for data product being there, length(Dates) == length(unique(Dates))
-  # execute FUN_EVI
-} 
+setwd(Dir.EVI)
+Dates_vec <- gsub("-.*.", "", list.files(pattern = ".tif")) # retain only dates of file names (YYYY_MM_DD)
+while(length(Dates_vec) != length(unique(Dates_vec))){ # MOD13A2 Product Check: check if all MOD13A2 data is present
+  try(FUN_EVI()) # try because it stumbles on saving files here and there and needs to be restarted
+} # end of MOD13A2 Product Check
+setwd(mainDir)
 
 
 ####--------------- CLIMATE DATA ---------------------------------------------------
