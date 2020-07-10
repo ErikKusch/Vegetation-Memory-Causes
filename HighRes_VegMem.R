@@ -105,84 +105,94 @@ while(length(Dates_vec) != length(unique(Dates_vec))){ # MOD13A2 Product Check: 
 } # end of MOD13A2 Product Check
 setwd(mainDir)
 
+####--------------- CLIMATE DATA DOWNLOAD ------------------------------------------
+Dates_vec2 <- gsub(pattern = "_", replacement = "-", x = Dates_vec) # change underscores to dashes for easier conversion to date format
+Vars_vec <- c("2m_temperature", "volumetric_soil_water_layer_1") # Variables we want to download
+VarsAbbr_vec <- c("AT", "SM") # Abbreviations to use as suffix when storing files
+for(Dates_Iter in 1:length(Dates_vec)){ # Dates loop: loop over all 16-day time slots in the MOD13A2 data
+  for(Var_Iter in 1:length(Vars_vec)){ # Variable loop: loop over the climatic variables we want to download
+    Clim_ras <- KrigR::download_ERA(Variable = Vars_vec[Var_Iter],
+                                Type = "reanalysis",
+                                DataSet = "era5-land",
+                                DateStart = as.Date(Dates_vec2[Dates_Iter]),
+                                DateStop = as.Date(Dates_vec2[Dates_Iter])+15,
+                                TResolution = "day",
+                                TStep = 16,
+                                Dir = Dir.ERA,
+                                FileName = Dates_vec[Dates_Iter],
+                                API_User = API_User,
+                                API_Key = API_Key)
+    raster::writeRaster(AT_ras, filename = file.path(Dir.ERA, paste0(VarsAbbr_vec[Dates_Iter], Dates_vec[Dates_Iter])), format = "GTiff", overwrite = TRUE) # write the raster as a .tif
+    unlink(file.path(Dir.ERA, paste0(Dates_vec[Dates_Iter], ".nc"))) # remove the netcdf that's exported by donwload_ERA
+  } # end of Variable loop
+} # end of Dates loop
 
-####--------------- CLIMATE DATA ---------------------------------------------------
-AT_1 <- KrigR::download_ERA(Variable = "2m_temperature",
-                            Type = "reanalysis",
-                            DataSet = "era5-land",
-                            DateStart = "2001-01-01",
-                            DateStop = "2004-12-31",
-                            TResolution = "day",
-                            TStep = 16,
-                            Extent = extent(-180, 180, -90, 90),
-                            Dir = Dir.ERA,
-                            FileName = "2m_temperature_raw.nc",
-                            API_User = API_User,
-                            API_Key = API_Key)
+####--------------- COVARIATE DATA DOWNLOAD ----------------------------------------
+KrigR::download_DEM(Train_ras = Clim_ras,
+                    Target_ras = raster::raster(file.path(Dir.EVI, list.files(Dir.EVI)[1])),
+                    Dir = Dir.COV,
+                    Keep_Temporary = TRUE
+                    )
+####--------------- KRIGING OF CLIMATE DATA ----------------------------------------
 
-### repeat this a few times until full 01_01-2001 to 31_12_2019 coverage is established
-extent(train) <- extent(-180,180,-90,90)
-
-target <- raster(file.path(Dir.EVI, "EVI_Reference.nc"))
-#extent(target) <- extent(-180,180,-90,90)
-
-# Select an extent for a tile
-Extents <- list()
-res_tiles <- 2
-Lat_Tiles <- (160-res_tiles)/res_tiles # this is 90 and -90 divided by bands of 10 degrees. This tells us how many bands we need
-Lon_Tiles <- (360-res_tiles)/res_tiles 
-z <- 1
-for(i in 0:Lat_Tiles){
-  for(j in 0:Lon_Tiles){
-    Extents[[z]] <- extent(extent(-180+res_tiles*j,
-                                  -180+res_tiles*(j+1),
-                                  -60+res_tiles*i,
-                                  -60+res_tiles*(i+1)))
-    z <- z + 1
-  }
-}
-Tiles <- (Lat_Tiles+1)*(Lon_Tiles+1) -1 
-
-Regions = as.list(rep("GlobalKrig", length(Extents)))
-RegionFiles = as.list(paste("BandName_", seq(1,Tiles+1,1), sep=""))
-
-start <-  Sys.time()
-for(Krig_Iter in 1:length(Extents)){
-  # specification for KrigR() here indexing filenames as RegionFiles[[Krig_Iter]] and extents as Extents[[Krig_Iter]] for each run
-  suppressWarnings(krigR)
-  cropped_train <- crop(train, Extents[[Krig_Iter]])
-  # cropped_target <- crop(target, Extents[[Krig_Iter]])
-  cropped_shp <- crop(shp,Extents[[Krig_Iter]])
-  
-  extent(cropped_train) <- Extents[[Krig_Iter]]
-  #extent(cropped_target) <- Extents[[Krig_Iter]]
-  # res(cropped_target) <- c(0.0833333,0.0833333)  
-  Covs_ls <- download_DEM(
-    Train_ras = cropped_train,
-    Target_res = 0.01, #cropped_target,
-    Shape = cropped_shp, #NULL, # this is the default and does not need to be specified
-    Dir = getwd(), # this is the default and does not need to be specified
-    Keep_Temporary = TRUE 
-  )
-  
-  Covs_train <- Covs_ls[[1]]
-  Covs_target <- Covs_ls[[2]]
-  # !all(is.na(c(NA, cropped_shp))) & 
-  if ( length(which(!is.na(values(cropped_train)))) > 5  ){
-    krigR(
-      Data = cropped_train,
-      Covariates_coarse = Covs_train, # What's my name? - TschickyTschicky
-      Covariates_fine = Covs_target,   # Say my name! - Slim Shady
-      KrigingEquation = "ERA ~ DEM",  # this is the default and does not need to be specified
-      Cores = 1, # you set this to detectcores() - That only makes sense for kriging of rasters with multiple layers. Your test data has only one layer hence you gain nothing by parallel processing but lose the progress bar
-      Dir = getwd(),  # this is the default and does not need to be specified
-      FileName = RegionFiles[[Krig_Iter]], # you left this empty, but it is needed
-      Keep_Temporary = FALSE  # this is the default and does not need to be specified
-      # You had specified far more arguments here. These are only used for the full pipeline style analysis which we don't recommend. see ?krigR
-    )
-  } else {print(paste0("Skipping..",Krig_Iter))}
-}
-
-endtime <-  Sys.time()
-duration  <- endtime - start
-
+# extent(train) <- extent(-180,180,-90,90)
+# 
+# target <- raster(file.path(Dir.EVI, "EVI_Reference.nc"))
+# #extent(target) <- extent(-180,180,-90,90)
+# 
+# # Select an extent for a tile
+# Extents <- list()
+# res_tiles <- 2
+# Lat_Tiles <- (160-res_tiles)/res_tiles # this is 90 and -90 divided by bands of 10 degrees. This tells us how many bands we need
+# Lon_Tiles <- (360-res_tiles)/res_tiles 
+# z <- 1
+# for(i in 0:Lat_Tiles){
+#   for(j in 0:Lon_Tiles){
+#     Extents[[z]] <- extent(extent(-180+res_tiles*j,
+#                                   -180+res_tiles*(j+1),
+#                                   -60+res_tiles*i,
+#                                   -60+res_tiles*(i+1)))
+#     z <- z + 1
+#   }
+# }
+# Tiles <- (Lat_Tiles+1)*(Lon_Tiles+1) -1 
+# 
+# Regions = as.list(rep("GlobalKrig", length(Extents)))
+# RegionFiles = as.list(paste("BandName_", seq(1,Tiles+1,1), sep=""))
+# 
+# start <-  Sys.time()
+# for(Krig_Iter in 1:length(Extents)){
+#   # specification for KrigR() here indexing filenames as RegionFiles[[Krig_Iter]] and extents as Extents[[Krig_Iter]] for each run
+#   suppressWarnings(krigR)
+#   cropped_train <- crop(train, Extents[[Krig_Iter]])
+#   # cropped_target <- crop(target, Extents[[Krig_Iter]])
+#   cropped_shp <- crop(shp,Extents[[Krig_Iter]])
+#   
+#   extent(cropped_train) <- Extents[[Krig_Iter]]
+#   #extent(cropped_target) <- Extents[[Krig_Iter]]
+#   # res(cropped_target) <- c(0.0833333,0.0833333)  
+#   Covs_ls <- download_DEM(
+#     Train_ras = cropped_train,
+#     Target_res = 0.01, #cropped_target,
+#     Shape = cropped_shp, #NULL, # this is the default and does not need to be specified
+#     Dir = getwd(), # this is the default and does not need to be specified
+#     Keep_Temporary = TRUE 
+#   )
+#   
+#   Covs_train <- Covs_ls[[1]]
+#   Covs_target <- Covs_ls[[2]]
+#   # !all(is.na(c(NA, cropped_shp))) & 
+#   if ( length(which(!is.na(values(cropped_train)))) > 5  ){
+#     krigR(
+#       Data = cropped_train,
+#       Covariates_coarse = Covs_train, # What's my name? - TschickyTschicky
+#       Covariates_fine = Covs_target,   # Say my name! - Slim Shady
+#       KrigingEquation = "ERA ~ DEM",  # this is the default and does not need to be specified
+#       Cores = 1, # you set this to detectcores() - That only makes sense for kriging of rasters with multiple layers. Your test data has only one layer hence you gain nothing by parallel processing but lose the progress bar
+#       Dir = getwd(),  # this is the default and does not need to be specified
+#       FileName = RegionFiles[[Krig_Iter]], # you left this empty, but it is needed
+#       Keep_Temporary = FALSE  # this is the default and does not need to be specified
+#       # You had specified far more arguments here. These are only used for the full pipeline style analysis which we don't recommend. see ?krigR
+#     )
+#   } else {print(paste0("Skipping..",Krig_Iter))}
+# }
