@@ -101,6 +101,7 @@ FUN_EVI <- function(){
 setwd(Dir.EVI)
 Dates_vec <- gsub("-.*.", "", list.files(pattern = ".tif")) # retain only dates of file names (YYYY_MM_DD)
 while(length(Dates_vec) != length(unique(Dates_vec))){ # MOD13A2 Product Check: check if all MOD13A2 data is present
+  print("Merging MOD13A2 files from GEE now.")
   try(FUN_EVI()) # try because it stumbles on saving files here and there and needs to be restarted
 } # end of MOD13A2 Product Check
 setwd(mainDir)
@@ -112,7 +113,6 @@ FUN_DownloadCLIM <- function(Var_long = "2m_temperature", Var_short = "AT"){
   Dates_vec2 <- gsub(pattern = "_", replacement = "-", x = Dates_vec) # change underscores to dashes for easier conversion to date format
   cl <- parallel::makeCluster(numberOfCores) # Assuming X node cluster
   doParallel::registerDoParallel(cl) # registering cores
-  setwd(Dir.ERA)
   foreach::foreach(Dates_Iter = 1:length(Dates_vec), .packages = c("KrigR"), .export = c("Dir.ERA", "API_User", "API_Key", "Var_long", "Var_short", "Dates_vec", "Dates_vec2")) %dopar% { # Dates loop: loop over all 16-day time slots in the MOD13A2 data
     if(file.exists(file.path(Dir.ERA, paste0(Var_short, Dates_vec[Dates_Iter], ".tif")))){ # file check: if file has already been downloaded
       next() 
@@ -136,77 +136,190 @@ FUN_DownloadCLIM <- function(Var_long = "2m_temperature", Var_short = "AT"){
 setwd(Dir.ERA)
 ERA_fs <- list.files(pattern = ".tif") # list all tif files in ERA directory
 if(length(ERA_fs) < length(Dates_vec)*2){ # ERA Product Check: if we do not have twice as many ERA files as MOD13A2 files
+  print("Downloading ERA5-Land data now.")
   FUN_DownloadCLIM(Var_long = "2m_temperature", Var_short = "AT") # download airtemp data
   FUN_DownloadCLIM(Var_long = "volumetric_soil_water_layer_1", Var_short = "SM") # download qsoil1 data
 } # end of ERA Product Check
 
-
 ####--------------- COVARIATE DATA DOWNLOAD ----------------------------------------
-Covs_ls <- KrigR::download_DEM(Train_ras = Clim_ras,
-                    Target_res = raster::raster(file.path(Dir.EVI, list.files(Dir.EVI)[1])),
-                    Dir = Dir.COV,
-                    Keep_Temporary = TRUE
-                    )
+print("Loading covariate data.")
+if(file.exists(file.path(Dir.COV, "GMTED2010_Target.nc"))){
+  Covs_ls <- list(raster::raster(file.path(Dir.COV, "GMTED2010_Train.nc")),
+                  raster::raster(file.path(Dir.COV, "GMTED2010_Target.nc")))
+}else{
+  Covs_ls <- KrigR::download_DEM(Train_ras = raster::raster(file.path(Dir.ERA, list.files(Dir.ERA)[1])),
+                                 Target_res = raster::raster(file.path(Dir.EVI, list.files(Dir.EVI)[1])),
+                                 Dir = Dir.COV,
+                                 Keep_Temporary = TRUE
+  )
+}
+raster::extent(Covs_ls[[1]]) <- raster::extent(-180,180,-90,90)
+raster::extent(Covs_ls[[2]]) <- raster::extent(-180,180,-90,90)
 ####--------------- KRIGING OF CLIMATE DATA ----------------------------------------
+#### ESTABLISH TILES
+Extents <- list() # empty list for extent objects
+res_tiles <- 3 # resolution of tiles
+Lat_Tiles <- (150-res_tiles)/res_tiles # we only cover 150° of latitude
+Lon_Tiles <- (360-res_tiles)/res_tiles # we cover the full 360° of longitude
+z <- 1 # enumerator for list elements
+Clim_ras <- raster::raster(file.path(Dir.ERA, list.files(Dir.ERA)[1]))
+raster::extent(Clim_ras) <- raster::extent(-180,180,-90,90)
+print("Checking for which tiles to krig on.")
+Prog_Iter <- 0
+ProgBar <- txtProgressBar(min = 0, max = (Lat_Tiles+1) * (Lon_Tiles+1), style = 3)
+for(i in 0:Lat_Tiles){ # lat loop
+  for(j in 0:Lon_Tiles){ # lon loop
+    Extent_curr <- raster::extent(c(-180+res_tiles*j,
+                                  -180+res_tiles*(j+1),
+                                  -60+res_tiles*i,
+                                  -60+res_tiles*(i+1)))
+    Clim_check <- raster::crop(Clim_ras, Extent_curr)
+    Land_check <- raster::crop(Covs_ls[[2]], Extent_curr)
+    try(Land_check <- raster::mask(Land_check, cropped_shp), silent = TRUE)
+    if(!all(is.na(c(NA, Land_check))) & length(which(!is.na(values(Clim_check)))) > 5){ # sanity check: if kriging can be performed with this extent
+    Extents[[z]] <- Extent_curr # save extent to list
+    z <- z + 1 # raise enumerator of list elements
+      } # end of sanity check
+    Prog_Iter <- Prog_Iter + 1
+    setTxtProgressBar(ProgBar, Prog_Iter) # update progress bar
+  } # end of lon loop
+} # end of lat loop
+Names_tiles = as.list(paste("TempFile_", 1:length(Extents), sep="")) # names of tiles for names of temporary files
 
-# extent(train) <- extent(-180,180,-90,90)
-# 
-# target <- raster(file.path(Dir.EVI, "EVI_Reference.nc"))
-# #extent(target) <- extent(-180,180,-90,90)
-# 
-# # Select an extent for a tile
-# Extents <- list()
-# res_tiles <- 2
-# Lat_Tiles <- (160-res_tiles)/res_tiles # this is 90 and -90 divided by bands of 10 degrees. This tells us how many bands we need
-# Lon_Tiles <- (360-res_tiles)/res_tiles 
-# z <- 1
-# for(i in 0:Lat_Tiles){
-#   for(j in 0:Lon_Tiles){
-#     Extents[[z]] <- extent(extent(-180+res_tiles*j,
-#                                   -180+res_tiles*(j+1),
-#                                   -60+res_tiles*i,
-#                                   -60+res_tiles*(i+1)))
-#     z <- z + 1
-#   }
-# }
-# Tiles <- (Lat_Tiles+1)*(Lon_Tiles+1) -1 
-# 
-# Regions = as.list(rep("GlobalKrig", length(Extents)))
-# RegionFiles = as.list(paste("BandName_", seq(1,Tiles+1,1), sep=""))
-# 
-# start <-  Sys.time()
-# for(Krig_Iter in 1:length(Extents)){
-#   # specification for KrigR() here indexing filenames as RegionFiles[[Krig_Iter]] and extents as Extents[[Krig_Iter]] for each run
-#   suppressWarnings(krigR)
-#   cropped_train <- crop(train, Extents[[Krig_Iter]])
-#   # cropped_target <- crop(target, Extents[[Krig_Iter]])
-#   cropped_shp <- crop(shp,Extents[[Krig_Iter]])
-#   
-#   extent(cropped_train) <- Extents[[Krig_Iter]]
-#   #extent(cropped_target) <- Extents[[Krig_Iter]]
-#   # res(cropped_target) <- c(0.0833333,0.0833333)  
-#   Covs_ls <- download_DEM(
-#     Train_ras = cropped_train,
-#     Target_res = 0.01, #cropped_target,
-#     Shape = cropped_shp, #NULL, # this is the default and does not need to be specified
-#     Dir = getwd(), # this is the default and does not need to be specified
-#     Keep_Temporary = TRUE 
-#   )
-#   
-#   Covs_train <- Covs_ls[[1]]
-#   Covs_target <- Covs_ls[[2]]
-#   # !all(is.na(c(NA, cropped_shp))) & 
-#   if ( length(which(!is.na(values(cropped_train)))) > 5  ){
-#     krigR(
-#       Data = cropped_train,
-#       Covariates_coarse = Covs_train, # What's my name? - TschickyTschicky
-#       Covariates_fine = Covs_target,   # Say my name! - Slim Shady
-#       KrigingEquation = "ERA ~ DEM",  # this is the default and does not need to be specified
-#       Cores = 1, # you set this to detectcores() - That only makes sense for kriging of rasters with multiple layers. Your test data has only one layer hence you gain nothing by parallel processing but lose the progress bar
-#       Dir = getwd(),  # this is the default and does not need to be specified
-#       FileName = RegionFiles[[Krig_Iter]], # you left this empty, but it is needed
-#       Keep_Temporary = FALSE  # this is the default and does not need to be specified
-#       # You had specified far more arguments here. These are only used for the full pipeline style analysis which we don't recommend. see ?krigR
-#     )
-#   } else {print(paste0("Skipping..",Krig_Iter))}
-# }
+#### KRIGING
+# FUN_Krig <- function(Var_short = "AT"){
+setwd(Dir.ERA)  
+Clim_fs <- list.files(pattern = ".tif")[startsWith(prefix = Var_short, x = list.files(pattern = ".tif"))] # list all unkriged files belonging to target variable
+for(Dates_Iter in 1:length(Clim_fs)){ # Dates loop: loop over all dates for which we've got ERA data
+  Name <- gsub(pattern = ".tif", replacement ="", x = Clim_fs[Dates_Iter])
+  Dir.Date <- file.path(Dir.ERA, Name) # register directory for tiles of this date
+  dir.create(Dir.Date) # create directory for tiles of this date
+  Clim_train <- raster::raster(file.path(Dir.ERA, Clim_fs[Dates_Iter])) # load training data for this date
+  raster::extent(Clim_train) <- raster::extent(-180,180,-90,90) # set extent to prevent misalignment
+  ProgBar <- txtProgressBar(min = 0, max = length(Extents), style = 3) # establish progress bar
+  cl <- parallel::makeCluster(numberOfCores) # Assuming X node cluster
+  doParallel::registerDoParallel(cl) # registering cores
+  foreach::foreach(Krig_Iter = 1:length(Extents), .packages = c("KrigR"), .export = c("Dir.ERA", "Covs_ls", "Clim_train", "Land_shp", "Var_short", "Extents", "ProgBar", "Dir.Date")) %dopar% { # tiles loop: loop over all tiles
+    # 
+    # 
+    # 
+    # 
+    # 
+    # for(Krig_Iter in 1:length(Extents)){ # delete me!!
+    #   
+    #   
+    #   
+      cropped_train <- raster::crop(Clim_train, Extents[[Krig_Iter]]) # crop training data
+      raster::extent(cropped_train) <- Extents[[Krig_Iter]] # set extent of cropped training data (necessary because of rounding issues in late decimal points)
+      cropped_shp <- raster::crop(Land_shp, Extents[[Krig_Iter]]) # crop land mask shapefile
+      Covs_train <- raster::crop(Covs_ls[[1]], Extents[[Krig_Iter]]) # crop training covariates
+      # try(Covs_train <- raster::mask(Covs_train, cropped_shp), silent = TRUE) # attempt masking (fails if on sea pixel)
+      Covs_target <- raster::crop(Covs_ls[[2]], Extents[[Krig_Iter]])  # crop target covariates
+      # try(Covs_target <- raster::mask(Covs_target, cropped_shp), silent = TRUE) # attempt masking (fails if on sea pixel)
+      try( # try because of singular covariance matrices which can be an issue if there isn't enough data 
+        Dummy_ls <- KrigR::krigR(
+          Data = cropped_train,
+          Covariates_coarse = Covs_train,
+          Covariates_fine = Covs_target,
+          Cores = 1,
+          Dir = Dir.Date,
+          FileName = RegionFiles[[Krig_Iter]],
+          Keep_Temporary = FALSE
+        ), 
+        silent=TRUE)
+      # 
+      # 
+      # 
+      # setTxtProgressBar(ProgBar, Krig_Iter)} # delete me!!
+      # 
+      # 
+    setTxtProgressBar(ProgBar, Krig_Iter) # update progress bar  
+  } # end of tiles loop
+  stopCluster(cl) # stop cluster
+  setwd(Dir.Date)
+  Krig_fs <- list.files(pattern = ".tif")[startsWith(prefix = Var_short, x = list.files(pattern = ".tif"))] # list all data tiles of current date
+  SE_fs <- list.files(pattern = ".tif")[startsWith(prefix = "SE", x = list.files(pattern = ".tif"))] # list all uncertainty tiles of current date
+  
+  
+  
+  print(paste("Merging", Var_short, "tiles for", Name))
+  
+  Krigs_ls <- as.list(rep(NA, length(Krig_fs)))
+  SEs_ls <- as.list(rep(NA, length(SE_fs)))
+  
+  for(i in 1:length(Krigs)) { # 
+    Krigs_ls[[i]] <- raster::raster(Krigs_fs[i])
+    SEs_ls[[i]] <- raster::raster(SE_fs[i])
+  }
+  
+  Krigs_ls$fun <- mean
+  SEs_ls$fun <- mean
+  
+  Krigs_glob <- do.call(raster::mosaic, Krigs_ls)
+  SEs_glob <- do.call(raster::mosaic, SEs_ls)
+  
+  raster::plot(Krigs_glob)
+  raster::plot(SEs_glob)
+  
+  setwd(Dir.ERA)
+  
+  
+  raster::writeRaster(stack(Krigs_glob, SEs_glob), filename = paste0("K_", Name), format = "GTiff", overwrite = TRUE)
+  
+  
+  unlink(Dir.Date, recursive = TRUE)
+  
+  
+  # raster::writeRaster(Krigs_glob, filename = paste0("K_", Name), format = "GTiff", overwrite = TRUE)
+  # raster::writeRaster(SEs_glob, filename = paste0("K_SE_", Name), format = "CDF", overwrite = TRUE)
+  
+  ##### save mosaiced raster starting with the letter K as file name
+  
+}# end of Dates loop
+# } # end of FUN_Krig
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
