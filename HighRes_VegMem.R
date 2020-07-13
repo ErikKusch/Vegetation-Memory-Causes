@@ -111,27 +111,37 @@ FUN_DownloadCLIM <- function(Var_long = "2m_temperature", Var_short = "AT"){
   setwd(Dir.EVI)
   Dates_vec <- c(gsub(pattern = "2001", replacement = "2000", x = Dates_vec[startsWith(x = Dates_vec, prefix = "2001")]), gsub("-.*.", "", list.files(pattern = ".tif")))
   Dates_vec2 <- gsub(pattern = "_", replacement = "-", x = Dates_vec) # change underscores to dashes for easier conversion to date format
-  cl <- parallel::makeCluster(numberOfCores) # Assuming X node cluster
-  doParallel::registerDoParallel(cl) # registering cores
-  foreach::foreach(Dates_Iter = 1:length(Dates_vec), .packages = c("KrigR"), .export = c("Dir.ERA", "API_User", "API_Key", "Var_long", "Var_short", "Dates_vec", "Dates_vec2")) %dopar% { # Dates loop: loop over all 16-day time slots in the MOD13A2 data
-    if(file.exists(file.path(Dir.ERA, paste0(Var_short, Dates_vec[Dates_Iter], ".tif")))){ # file check: if file has already been downloaded
-      next() 
-    } # end of file check
-    Clim_ras <- KrigR::download_ERA(Variable = Var_long,
-                                    Type = "reanalysis",
-                                    DataSet = "era5-land",
+  looptext <- "Clim_ras <- KrigR::download_ERA(Variable = Var_long,
+                                    Type = 'reanalysis',
+                                    DataSet = 'era5-land',
                                     DateStart = as.Date(Dates_vec2[Dates_Iter]),
                                     DateStop = as.Date(Dates_vec2[Dates_Iter])+15,
-                                    TResolution = "day",
+                                    TResolution = 'day',
                                     TStep = 16,
                                     Dir = Dir.ERA,
                                     FileName = Dates_vec[Dates_Iter],
                                     API_User = API_User,
                                     API_Key = API_Key)
-    raster::writeRaster(Clim_ras, filename = file.path(Dir.ERA, paste0(Var_short, Dates_vec[Dates_Iter])), format = "GTiff", overwrite = TRUE) # write the raster as a .tif
-    unlink(file.path(Dir.ERA, paste0(Dates_vec[Dates_Iter], ".nc"))) # remove the netcdf that's exported by donwload_ERA
-  } # end of Dates loop
-  parallel::stopCluster(cl)
+    raster::writeRaster(Clim_ras, filename = file.path(Dir.ERA, paste0(Var_short, Dates_vec[Dates_Iter])), format = 'GTiff', overwrite = TRUE) # write the raster as a .tif
+    unlink(file.path(Dir.ERA, paste0(Dates_vec[Dates_Iter], '.nc'))) # remove the netcdf that's exported by donwload_ERA
+  "
+  if(numberOfCores > 1){
+    cl <- parallel::makeCluster(numberOfCores) # Assuming X node cluster
+    doParallel::registerDoParallel(cl) # registering cores
+    foreach::foreach(Dates_Iter = 1:length(Dates_vec), .packages = c("KrigR"), .export = c("Dir.ERA", "API_User", "API_Key", "Var_long", "Var_short", "Dates_vec", "Dates_vec2")) %:% when(!file.exists(file.path(Dir.ERA, paste0(Var_short, Dates_vec[Dates_Iter], ".tif")))) %dopar% { # Dates loop: loop over all 16-day time slots in the MOD13A2 data
+      eval(parse(text=looptext)) # evaluate the kriging specification per layer
+    } # end of Dates loop
+    parallel::stopCluster(cl)
+  }else{
+    for(Dates_Iter in 1:length(Dates_vec)){
+      if(file.exists(file.path(Dir.ERA, paste0(Var_short, Dates_vec[Dates_Iter], ".tif")))){ # file check: if file has already been downloaded
+        print(paste(Var_long, Dates_vec[Dates_Iter], "already downloaded"))
+        next() 
+      } # end of file check
+      print(paste(Var_long, Dates_vec[Dates_Iter], "now downloading"))
+      eval(parse(text=looptext)) # evaluate the kriging specification per layer
+    }
+  }
 } # end of FUN_DownloadCLIM
 setwd(Dir.ERA)
 ERA_fs <- list.files(pattern = ".tif")[!startsWith(prefix = "K_", x = list.files(pattern = ".tif"))] # list all unkriged files
@@ -140,6 +150,7 @@ if(length(ERA_fs) < (length(Dates_vec)+sum(startsWith(x = Dates_vec, prefix = "2
   FUN_DownloadCLIM(Var_long = "2m_temperature", Var_short = "AT") # download airtemp data
   FUN_DownloadCLIM(Var_long = "volumetric_soil_water_layer_1", Var_short = "SM") # download qsoil1 data
 } # end of ERA Product Check
+setwd(mainDir)
 
 ####--------------- COVARIATE DATA DOWNLOAD ----------------------------------------
 print("Loading covariate data.")
@@ -201,10 +212,7 @@ FUN_Krig <- function(Var_short = "AT"){
     dir.create(Dir.Date) # create directory for tiles of this date
     Clim_train <- raster::raster(file.path(Dir.ERA, Clim_fs[Dates_Iter])) # load training data for this date
     raster::extent(Clim_train) <- raster::extent(-180,180,-90,90) # set extent to prevent misalignment
-    # ProgBar <- txtProgressBar(min = 0, max = length(Extents), style = 3) # establish progress bar
-    cl <- parallel::makeCluster(numberOfCores) # Assuming X node cluster
-    doParallel::registerDoParallel(cl) # registering cores
-    foreach::foreach(Krig_Iter = 1:length(Extents), .packages = c("KrigR"), .export = c("Dir.ERA", "Covs_ls", "Clim_train", "Land_shp", "Var_short", "Extents", "ProgBar", "Dir.Date")) %:% when(!file.exists(file.path(Dir.Date, paste0(Names_tiles[Krig_Iter], ".nc")))) %dopar% { # tiles loop: loop over all tiles
+    looptext <- "
       cropped_train <- raster::crop(Clim_train, Extents[[Krig_Iter]]) # crop training data
       raster::extent(cropped_train) <- Extents[[Krig_Iter]] # set extent of cropped training data (necessary because of rounding issues in late decimal points)
       cropped_shp <- raster::crop(Land_shp, Extents[[Krig_Iter]]) # crop land mask shapefile
@@ -223,9 +231,21 @@ FUN_Krig <- function(Var_short = "AT"){
           Keep_Temporary = FALSE
         ), 
         silent=TRUE)
-      # setTxtProgressBar(ProgBar, Krig_Iter) # update progress bar  
-    } # end of tiles loop
-    stopCluster(cl) # stop cluster
+        "
+    if(numberOfCores > 1){
+      cl <- parallel::makeCluster(numberOfCores) # Assuming X node cluster
+      doParallel::registerDoParallel(cl) # registering cores
+      foreach::foreach(Krig_Iter = 1:length(Extents), .packages = c("KrigR"), .export = c("Dir.ERA", "Covs_ls", "Clim_train", "Land_shp", "Var_short", "Extents", "ProgBar", "Dir.Date")) %:% when(!file.exists(file.path(Dir.Date, paste0(Names_tiles[Krig_Iter], ".nc")))) %dopar% { # tiles loop: loop over all tiles
+        eval(parse(text=looptext)) # evaluate the kriging specification per layer
+      } # end of tiles loop
+      stopCluster(cl) # stop cluster
+    }else{
+      ProgBar <- txtProgressBar(min = 0, max = length(Extents), style = 3) # establish progress bar
+      for(Krig_Iter in 1:length(Extents)){
+        eval(parse(text=looptext)) # evaluate the kriging specification per layer
+        setTxtProgressBar(ProgBar, Krig_Iter) # update progress bar
+      }
+    }
     setwd(Dir.Date)
     Krig_fs <- list.files(pattern = ".nc")[startsWith(prefix = "TempFile", x = list.files(pattern = ".nc"))] # list all data tiles of current date
     SE_fs <- list.files(pattern = ".nc")[startsWith(prefix = "SE", x = list.files(pattern = ".nc"))] # list all uncertainty tiles of current date
