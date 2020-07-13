@@ -1,6 +1,7 @@
 rm(list = ls()) # clearing environment
 ####--------------- PACKAGES ----------------------------------------------------
 if("KrigR" %in% rownames(installed.packages()) == FALSE){ # KrigR check
+  Sys.setenv(R_REMOTES_NO_ERRORS_FROM_WARNINGS="true")
   devtools::install_github("https://github.com/ErikKusch/KrigR")
 }else{ 
   library(KrigR) 
