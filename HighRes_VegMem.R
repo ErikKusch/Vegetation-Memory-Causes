@@ -235,14 +235,18 @@ FUN_Krig <- function(Var_short = "AT"){
     if(numberOfCores > 1){
       cl <- parallel::makeCluster(numberOfCores) # Assuming X node cluster
       doParallel::registerDoParallel(cl) # registering cores
-      foreach::foreach(Krig_Iter = 1:length(Extents), .packages = c("KrigR"), .export = c("Dir.ERA", "Covs_ls", "Clim_train", "Land_shp", "Var_short", "Extents", "ProgBar", "Dir.Date")) %:% when(!file.exists(file.path(Dir.Date, paste0(Names_tiles[Krig_Iter], ".nc")))) %dopar% { # tiles loop: loop over all tiles
+      foreach::foreach(Krig_Iter = 1:length(Extents), .packages = c("KrigR"), .export = c("Dir.ERA", "Covs_ls", "Clim_train", "Land_shp", "Var_short", "Extents", "Dir.Date", "Names_tiles")) %:% when(!file.exists(file.path(Dir.Date, paste0(Names_tiles[Krig_Iter], ".nc")))) %dopar% { # tiles loop: loop over all tiles
         eval(parse(text=looptext)) # evaluate the kriging specification per layer
       } # end of tiles loop
       stopCluster(cl) # stop cluster
     }else{
+      print(paste("Kriging", Name))
       ProgBar <- txtProgressBar(min = 0, max = length(Extents), style = 3) # establish progress bar
       for(Krig_Iter in 1:length(Extents)){
-        eval(parse(text=looptext)) # evaluate the kriging specification per layer
+        if(file.exists(file.path(Dir.Date, paste0(Names_tiles[Krig_Iter], ".nc")))){
+          next()
+        }
+        invisible <- capture.output(eval(parse(text=looptext))) # evaluate the kriging specification per layer
         setTxtProgressBar(ProgBar, Krig_Iter) # update progress bar
       }
     }
