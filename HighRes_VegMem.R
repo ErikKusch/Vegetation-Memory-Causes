@@ -201,7 +201,7 @@ FUN_Krig <- function(Var_short = "AT"){
     dir.create(Dir.Date) # create directory for tiles of this date
     Clim_train <- raster::raster(file.path(Dir.ERA, Clim_fs[Dates_Iter])) # load training data for this date
     raster::extent(Clim_train) <- raster::extent(-180,180,-90,90) # set extent to prevent misalignment
-    ProgBar <- txtProgressBar(min = 0, max = length(Extents), style = 3) # establish progress bar
+    # ProgBar <- txtProgressBar(min = 0, max = length(Extents), style = 3) # establish progress bar
     cl <- parallel::makeCluster(numberOfCores) # Assuming X node cluster
     doParallel::registerDoParallel(cl) # registering cores
     foreach::foreach(Krig_Iter = 1:length(Extents), .packages = c("KrigR"), .export = c("Dir.ERA", "Covs_ls", "Clim_train", "Land_shp", "Var_short", "Extents", "ProgBar", "Dir.Date")) %:% when(!file.exists(file.path(Dir.Date, paste0(Names_tiles[Krig_Iter], ".nc")))) %dopar% { # tiles loop: loop over all tiles
@@ -223,7 +223,7 @@ FUN_Krig <- function(Var_short = "AT"){
           Keep_Temporary = FALSE
         ), 
         silent=TRUE)
-      setTxtProgressBar(ProgBar, Krig_Iter) # update progress bar  
+      # setTxtProgressBar(ProgBar, Krig_Iter) # update progress bar  
     } # end of tiles loop
     stopCluster(cl) # stop cluster
     setwd(Dir.Date)
@@ -246,7 +246,7 @@ FUN_Krig <- function(Var_short = "AT"){
     values(SEs_glob)[which(values(Krigs_glob) < 180 | values(Krigs_glob) > 320)] <- NA
     setwd(Dir.ERA)
     Kriged_ras <- stack(Krigs_glob, SEs_glob)
-    Kriged_ras <- mask(Kriged_ras, Land_shp)
+    # Kriged_ras <- mask(Kriged_ras, Land_shp)
     raster::writeRaster(Kriged_ras, filename = paste0("K_", Name), format = "GTiff", overwrite = TRUE)
     unlink(Dir.Date, recursive = TRUE)
     unlink(file.path(Dir.ERA, paste0(Name, ".tif")), recursive = TRUE)
