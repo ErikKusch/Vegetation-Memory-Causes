@@ -128,13 +128,13 @@ FUN_DownloadCLIM <- function(Var_long = "2m_temperature", Var_short = "AT"){
   if(numberOfCores > 1){
     cl <- parallel::makeCluster(numberOfCores) # Assuming X node cluster
     doParallel::registerDoParallel(cl) # registering cores
-    foreach::foreach(Dates_Iter = 1:length(Dates_vec), .packages = c("KrigR"), .export = c("Dir.ERA", "API_User", "API_Key", "Var_long", "Var_short", "Dates_vec", "Dates_vec2")) %:% when(!file.exists(file.path(Dir.ERA, paste0(Var_short, Dates_vec[Dates_Iter], ".tif")))) %dopar% { # Dates loop: loop over all 16-day time slots in the MOD13A2 data
+    foreach::foreach(Dates_Iter = 1:length(Dates_vec), .packages = c("KrigR"), .export = c("Dir.ERA", "API_User", "API_Key", "Var_long", "Var_short", "Dates_vec", "Dates_vec2")) %:% when(!file.exists(file.path(Dir.ERA, paste0(Var_short, Dates_vec[Dates_Iter])))) %dopar% { # Dates loop: loop over all 16-day time slots in the MOD13A2 data
       eval(parse(text=looptext)) # evaluate the kriging specification per layer
     } # end of Dates loop
     parallel::stopCluster(cl)
   }else{
     for(Dates_Iter in 1:length(Dates_vec)){
-      if(file.exists(file.path(Dir.ERA, paste0(Var_short, Dates_vec[Dates_Iter], ".tif")))){ # file check: if file has already been downloaded
+      if(file.exists(file.path(Dir.ERA, paste0(Var_short, Dates_vec[Dates_Iter])))){ # file check: if file has already been downloaded
         print(paste(Var_long, Dates_vec[Dates_Iter], "already downloaded"))
         next() 
       } # end of file check
