@@ -117,19 +117,19 @@ FUN_DownloadCLIM <- function(Var_long = "2m_temperature", Var_short = "AT"){
     if(file.exists(file.path(Dir.ERA, paste0(Var_short, Dates_vec[Dates_Iter], ".tif")))){ # file check: if file has already been downloaded
       next() 
     } # end of file check
-      Clim_ras <- KrigR::download_ERA(Variable = Var_long,
-                                      Type = "reanalysis",
-                                      DataSet = "era5-land",
-                                      DateStart = as.Date(Dates_vec2[Dates_Iter]),
-                                      DateStop = as.Date(Dates_vec2[Dates_Iter])+15,
-                                      TResolution = "day",
-                                      TStep = 16,
-                                      Dir = Dir.ERA,
-                                      FileName = Dates_vec[Dates_Iter],
-                                      API_User = API_User,
-                                      API_Key = API_Key)
-      raster::writeRaster(Clim_ras, filename = file.path(Dir.ERA, paste0(Var_short, Dates_vec[Dates_Iter])), format = "GTiff", overwrite = TRUE) # write the raster as a .tif
-      unlink(file.path(Dir.ERA, paste0(Dates_vec[Dates_Iter], ".nc"))) # remove the netcdf that's exported by donwload_ERA
+    Clim_ras <- KrigR::download_ERA(Variable = Var_long,
+                                    Type = "reanalysis",
+                                    DataSet = "era5-land",
+                                    DateStart = as.Date(Dates_vec2[Dates_Iter]),
+                                    DateStop = as.Date(Dates_vec2[Dates_Iter])+15,
+                                    TResolution = "day",
+                                    TStep = 16,
+                                    Dir = Dir.ERA,
+                                    FileName = Dates_vec[Dates_Iter],
+                                    API_User = API_User,
+                                    API_Key = API_Key)
+    raster::writeRaster(Clim_ras, filename = file.path(Dir.ERA, paste0(Var_short, Dates_vec[Dates_Iter])), format = "GTiff", overwrite = TRUE) # write the raster as a .tif
+    unlink(file.path(Dir.ERA, paste0(Dates_vec[Dates_Iter], ".nc"))) # remove the netcdf that's exported by donwload_ERA
   } # end of Dates loop
   parallel::stopCluster(cl)
 } # end of FUN_DownloadCLIM
@@ -157,52 +157,54 @@ raster::extent(Covs_ls[[1]]) <- raster::extent(-180,180,-90,90)
 raster::extent(Covs_ls[[2]]) <- raster::extent(-180,180,-90,90)
 ####--------------- KRIGING OF CLIMATE DATA ----------------------------------------
 #### ESTABLISH TILES
-Extents <- list() # empty list for extent objects
-res_tiles <- 3 # resolution of tiles
-Lat_Tiles <- (150-res_tiles)/res_tiles # we only cover 150° of latitude
-Lon_Tiles <- (360-res_tiles)/res_tiles # we cover the full 360° of longitude
-z <- 1 # enumerator for list elements
-Clim_ras <- raster::raster(file.path(Dir.ERA, list.files(Dir.ERA)[1]))
-raster::extent(Clim_ras) <- raster::extent(-180,180,-90,90)
-print("Checking for which tiles to krig on.")
-Prog_Iter <- 0
-ProgBar <- txtProgressBar(min = 0, max = (Lat_Tiles+1) * (Lon_Tiles+1), style = 3)
-for(i in 0:Lat_Tiles){ # lat loop
-  for(j in 0:Lon_Tiles){ # lon loop
-    Extent_curr <- raster::extent(c(-180+res_tiles*j,
-                                  -180+res_tiles*(j+1),
-                                  -60+res_tiles*i,
-                                  -60+res_tiles*(i+1)))
-    Clim_check <- raster::crop(Clim_ras, Extent_curr)
-    Land_check <- raster::crop(Covs_ls[[2]], Extent_curr)
-    try(Land_check <- raster::mask(Land_check, cropped_shp), silent = TRUE)
-    if(!all(is.na(c(NA, Land_check))) & length(which(!is.na(values(Clim_check)))) > 5){ # sanity check: if kriging can be performed with this extent
-    Extents[[z]] <- Extent_curr # save extent to list
-    z <- z + 1 # raise enumerator of list elements
+if(file.exists(file.path(Dir.COV, "Extents_ls.RData"))){
+  load(file.path(Dir.COV, "Extents_ls.RData"))
+}else{
+  Extents <- list() # empty list for extent objects
+  res_tiles <- 3 # resolution of tiles
+  Lat_Tiles <- (150-res_tiles)/res_tiles # we only cover 150° of latitude
+  Lon_Tiles <- (360-res_tiles)/res_tiles # we cover the full 360° of longitude
+  z <- 1 # enumerator for list elements
+  Clim_ras <- raster::raster(file.path(Dir.ERA, list.files(Dir.ERA)[1]))
+  raster::extent(Clim_ras) <- raster::extent(-180,180,-90,90)
+  print("Checking for which tiles to krig on.")
+  Prog_Iter <- 0
+  ProgBar <- txtProgressBar(min = 0, max = (Lat_Tiles+1) * (Lon_Tiles+1), style = 3)
+  for(i in 0:Lat_Tiles){ # lat loop
+    for(j in 0:Lon_Tiles){ # lon loop
+      Extent_curr <- raster::extent(c(-180+res_tiles*j,
+                                      -180+res_tiles*(j+1),
+                                      -60+res_tiles*i,
+                                      -60+res_tiles*(i+1)))
+      Clim_check <- raster::crop(Clim_ras, Extent_curr)
+      Land_check <- raster::crop(Covs_ls[[2]], Extent_curr)
+      try(Land_check <- raster::mask(Land_check, cropped_shp), silent = TRUE)
+      if(!all(is.na(c(NA, Land_check))) & length(which(!is.na(values(Clim_check)))) > 5){ # sanity check: if kriging can be performed with this extent
+        Extents[[z]] <- Extent_curr # save extent to list
+        z <- z + 1 # raise enumerator of list elements
       } # end of sanity check
-    Prog_Iter <- Prog_Iter + 1
-    setTxtProgressBar(ProgBar, Prog_Iter) # update progress bar
-  } # end of lon loop
-} # end of lat loop
+      Prog_Iter <- Prog_Iter + 1
+      setTxtProgressBar(ProgBar, Prog_Iter) # update progress bar
+    } # end of lon loop
+  } # end of lat loop
+  save(Extents, file = file.path(Dir.COV, "Extents_ls.RData"))
+}
 Names_tiles = as.list(paste("TempFile_", 1:length(Extents), sep="")) # names of tiles for names of temporary files
 
 #### KRIGING
-# FUN_Krig <- function(Var_short = "AT"){
-setwd(Dir.ERA)  
-Clim_fs <- list.files(pattern = ".tif")[startsWith(prefix = Var_short, x = list.files(pattern = ".tif"))] # list all unkriged files belonging to target variable
-for(Dates_Iter in 1:length(Clim_fs)){ # Dates loop: loop over all dates for which we've got ERA data
-  Name <- gsub(pattern = ".tif", replacement ="", x = Clim_fs[Dates_Iter])
-  Dir.Date <- file.path(Dir.ERA, Name) # register directory for tiles of this date
-  dir.create(Dir.Date) # create directory for tiles of this date
-  Clim_train <- raster::raster(file.path(Dir.ERA, Clim_fs[Dates_Iter])) # load training data for this date
-  raster::extent(Clim_train) <- raster::extent(-180,180,-90,90) # set extent to prevent misalignment
-  ProgBar <- txtProgressBar(min = 0, max = length(Extents), style = 3) # establish progress bar
-  cl <- parallel::makeCluster(numberOfCores) # Assuming X node cluster
-  doParallel::registerDoParallel(cl) # registering cores
-  foreach::foreach(Krig_Iter = 1:length(Extents), .packages = c("KrigR"), .export = c("Dir.ERA", "Covs_ls", "Clim_train", "Land_shp", "Var_short", "Extents", "ProgBar", "Dir.Date")) %dopar% { # tiles loop: loop over all tiles
-    if(file.exists(Dir.Date, paste0(Names_tiles[Krig_Iter], ".nc"))){ # file check: if this file has already been kriged
-      next()
-    } # end of file check
+FUN_Krig <- function(Var_short = "AT"){
+  setwd(Dir.ERA)  
+  Clim_fs <- list.files(pattern = ".tif")[startsWith(prefix = Var_short, x = list.files(pattern = ".tif"))] # list all unkriged files belonging to target variable
+  for(Dates_Iter in 1:length(Clim_fs)){ # Dates loop: loop over all dates for which we've got ERA data
+    Name <- gsub(pattern = ".tif", replacement ="", x = Clim_fs[Dates_Iter])
+    Dir.Date <- file.path(Dir.ERA, Name) # register directory for tiles of this date
+    dir.create(Dir.Date) # create directory for tiles of this date
+    Clim_train <- raster::raster(file.path(Dir.ERA, Clim_fs[Dates_Iter])) # load training data for this date
+    raster::extent(Clim_train) <- raster::extent(-180,180,-90,90) # set extent to prevent misalignment
+    ProgBar <- txtProgressBar(min = 0, max = length(Extents), style = 3) # establish progress bar
+    cl <- parallel::makeCluster(numberOfCores) # Assuming X node cluster
+    doParallel::registerDoParallel(cl) # registering cores
+    foreach::foreach(Krig_Iter = 1:length(Extents), .packages = c("KrigR"), .export = c("Dir.ERA", "Covs_ls", "Clim_train", "Land_shp", "Var_short", "Extents", "ProgBar", "Dir.Date")) %:% when(!file.exists(file.path(Dir.Date, paste0(Names_tiles[Krig_Iter], ".nc")))) %dopar% { # tiles loop: loop over all tiles
       cropped_train <- raster::crop(Clim_train, Extents[[Krig_Iter]]) # crop training data
       raster::extent(cropped_train) <- Extents[[Krig_Iter]] # set extent of cropped training data (necessary because of rounding issues in late decimal points)
       cropped_shp <- raster::crop(Land_shp, Extents[[Krig_Iter]]) # crop land mask shapefile
@@ -221,93 +223,35 @@ for(Dates_Iter in 1:length(Clim_fs)){ # Dates loop: loop over all dates for whic
           Keep_Temporary = FALSE
         ), 
         silent=TRUE)
-    setTxtProgressBar(ProgBar, Krig_Iter) # update progress bar  
-  } # end of tiles loop
-  stopCluster(cl) # stop cluster
-  setwd(Dir.Date)
-  Krig_fs <- list.files(pattern = ".tif")[startsWith(prefix = "TempFile", x = list.files(pattern = ".tif"))] # list all data tiles of current date
-  SE_fs <- list.files(pattern = ".tif")[startsWith(prefix = "SE", x = list.files(pattern = ".tif"))] # list all uncertainty tiles of current date
-  
-  
-  
-  print(paste("Merging", Var_short, "tiles for", Name))
-  
-  Krigs_ls <- as.list(rep(NA, length(Krig_fs)))
-  SEs_ls <- as.list(rep(NA, length(SE_fs)))
-  
-  for(i in 1:length(Krigs)) { # 
-    Krigs_ls[[i]] <- raster::raster(Krigs_fs[i])
-    SEs_ls[[i]] <- raster::raster(SE_fs[i])
-  }
-  
-  Krigs_ls$fun <- mean
-  SEs_ls$fun <- mean
-  
-  Krigs_glob <- do.call(raster::mosaic, Krigs_ls)
-  SEs_glob <- do.call(raster::mosaic, SEs_ls)
-  
-  raster::plot(Krigs_glob)
-  raster::plot(SEs_glob)
-  
-  setwd(Dir.ERA)
-  
-  
-  raster::writeRaster(stack(Krigs_glob, SEs_glob), filename = paste0("K_", Name), format = "GTiff", overwrite = TRUE)
-  
-  
-  unlink(Dir.Date, recursive = TRUE)
-  
-  
-  # raster::writeRaster(Krigs_glob, filename = paste0("K_", Name), format = "GTiff", overwrite = TRUE)
-  # raster::writeRaster(SEs_glob, filename = paste0("K_SE_", Name), format = "CDF", overwrite = TRUE)
-  
-  ##### save mosaiced raster starting with the letter K as file name
-  
-}# end of Dates loop
-# } # end of FUN_Krig
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+      setTxtProgressBar(ProgBar, Krig_Iter) # update progress bar  
+    } # end of tiles loop
+    stopCluster(cl) # stop cluster
+    setwd(Dir.Date)
+    Krig_fs <- list.files(pattern = ".nc")[startsWith(prefix = "TempFile", x = list.files(pattern = ".nc"))] # list all data tiles of current date
+    SE_fs <- list.files(pattern = ".nc")[startsWith(prefix = "SE", x = list.files(pattern = ".nc"))] # list all uncertainty tiles of current date
+    
+    print(paste("Merging", Var_short, "tiles for", Name))
+    Krigs_ls <- as.list(rep(NA, length(Krig_fs)))
+    SEs_ls <- as.list(rep(NA, length(SE_fs)))
+    for(i in 1:length(Krigs_ls)) { # 
+      Krigs_ls[[i]] <- raster::raster(Krig_fs[i])
+      SEs_ls[[i]] <- raster::raster(SE_fs[i])
+    }
+    Krigs_ls$fun <- mean
+    Krigs_ls$tolerance <- 1.5
+    SEs_ls$fun <- mean
+    SEs_ls$tolerance <- 1.5
+    Krigs_glob <- do.call(raster::mosaic, Krigs_ls)
+    SEs_glob <- do.call(raster::mosaic, SEs_ls)
+    setwd(Dir.ERA)
+    raster::writeRaster(stack(Krigs_glob, SEs_glob), filename = paste0("K_", Name), format = "GTiff", overwrite = TRUE)
+    unlink(Dir.Date, recursive = TRUE)
+  }# end of Dates loop
+} # end of FUN_Krig
+setwd(Dir.ERA)
+K_ERA_fs <- list.files(pattern = ".tif")[startsWith(prefix = "K_", x = list.files(pattern = ".tif"))] # list all kriged files
+if(length(K_ERA_fs) < length(Dates_vec)*2){ # ERA Product Check: if we do not have twice as many ERA files as MOD13A2 files
+  print("Kriging ERA5-Land data now.")
+  FUN_Krig(Var_short = "AT") # krig airtemp data
+  FUN_Krig(Var_short = "SM") # krig qsoil data
+} # end of ERA Product Check
