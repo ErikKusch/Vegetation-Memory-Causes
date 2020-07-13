@@ -109,7 +109,7 @@ setwd(mainDir)
 ####--------------- CLIMATE DATA DOWNLOAD ------------------------------------------
 FUN_DownloadCLIM <- function(Var_long = "2m_temperature", Var_short = "AT"){
   setwd(Dir.EVI)
-  Dates_vec <- gsub("-.*.", "", list.files(pattern = ".tif"))
+  Dates_vec <- c(gsub(pattern = "2001", replacement = "2000", x = Dates_vec[startsWith(x = Dates_vec, prefix = "2001")]), gsub("-.*.", "", list.files(pattern = ".tif")))
   Dates_vec2 <- gsub(pattern = "_", replacement = "-", x = Dates_vec) # change underscores to dashes for easier conversion to date format
   cl <- parallel::makeCluster(numberOfCores) # Assuming X node cluster
   doParallel::registerDoParallel(cl) # registering cores
@@ -134,8 +134,8 @@ FUN_DownloadCLIM <- function(Var_long = "2m_temperature", Var_short = "AT"){
   parallel::stopCluster(cl)
 } # end of FUN_DownloadCLIM
 setwd(Dir.ERA)
-ERA_fs <- list.files(pattern = ".tif") # list all tif files in ERA directory
-if(length(ERA_fs) < length(Dates_vec)*2){ # ERA Product Check: if we do not have twice as many ERA files as MOD13A2 files
+ERA_fs <- list.files(pattern = ".tif") # list all tif files in ERA directory, needs to check for unkriged files only!!! exclude everything beginnign with "K_
+if(length(ERA_fs) < (length(Dates_vec)+sum(startsWith(x = Dates_vec, prefix = "2001")))*2){ # ERA Product Check: if we do not have twice as many ERA files as MOD13A2 files
   print("Downloading ERA5-Land data now.")
   FUN_DownloadCLIM(Var_long = "2m_temperature", Var_short = "AT") # download airtemp data
   FUN_DownloadCLIM(Var_long = "volumetric_soil_water_layer_1", Var_short = "SM") # download qsoil1 data
@@ -209,9 +209,9 @@ FUN_Krig <- function(Var_short = "AT"){
       raster::extent(cropped_train) <- Extents[[Krig_Iter]] # set extent of cropped training data (necessary because of rounding issues in late decimal points)
       cropped_shp <- raster::crop(Land_shp, Extents[[Krig_Iter]]) # crop land mask shapefile
       Covs_train <- raster::crop(Covs_ls[[1]], Extents[[Krig_Iter]]) # crop training covariates
-      # try(Covs_train <- raster::mask(Covs_train, cropped_shp), silent = TRUE) # attempt masking (fails if on sea pixel)
+      try(Covs_train <- raster::mask(Covs_train, cropped_shp), silent = TRUE) # attempt masking (fails if on sea pixel)
       Covs_target <- raster::crop(Covs_ls[[2]], Extents[[Krig_Iter]])  # crop target covariates
-      # try(Covs_target <- raster::mask(Covs_target, cropped_shp), silent = TRUE) # attempt masking (fails if on sea pixel)
+      try(Covs_target <- raster::mask(Covs_target, cropped_shp), silent = TRUE) # attempt masking (fails if on sea pixel)
       try( # try because of singular covariance matrices which can be an issue if there isn't enough data 
         Dummy_ls <- KrigR::krigR(
           Data = cropped_train,
@@ -229,7 +229,6 @@ FUN_Krig <- function(Var_short = "AT"){
     setwd(Dir.Date)
     Krig_fs <- list.files(pattern = ".nc")[startsWith(prefix = "TempFile", x = list.files(pattern = ".nc"))] # list all data tiles of current date
     SE_fs <- list.files(pattern = ".nc")[startsWith(prefix = "SE", x = list.files(pattern = ".nc"))] # list all uncertainty tiles of current date
-    
     print(paste("Merging", Var_short, "tiles for", Name))
     Krigs_ls <- as.list(rep(NA, length(Krig_fs)))
     SEs_ls <- as.list(rep(NA, length(SE_fs)))
@@ -242,14 +241,19 @@ FUN_Krig <- function(Var_short = "AT"){
     SEs_ls$fun <- mean
     SEs_ls$tolerance <- 1.5
     Krigs_glob <- do.call(raster::mosaic, Krigs_ls)
+    values(Krigs_glob)[which(values(Krigs_glob) < 180 | values(Krigs_glob) > 320)] <- NA
     SEs_glob <- do.call(raster::mosaic, SEs_ls)
+    values(SEs_glob)[which(values(Krigs_glob) < 180 | values(Krigs_glob) > 320)] <- NA
     setwd(Dir.ERA)
-    raster::writeRaster(stack(Krigs_glob, SEs_glob), filename = paste0("K_", Name), format = "GTiff", overwrite = TRUE)
+    Kriged_ras <- stack(Krigs_glob, SEs_glob)
+    Kriged_ras <- mask(Kriged_ras, Land_shp)
+    raster::writeRaster(Kriged_ras, filename = paste0("K_", Name), format = "GTiff", overwrite = TRUE)
     unlink(Dir.Date, recursive = TRUE)
-  }# end of Dates loop
+  } # end of Dates loop
 } # end of FUN_Krig
 setwd(Dir.ERA)
 K_ERA_fs <- list.files(pattern = ".tif")[startsWith(prefix = "K_", x = list.files(pattern = ".tif"))] # list all kriged files
+Dates_vec <- c(gsub(pattern = "2001", replacement = "2000", x = Dates_vec[startsWith(x = Dates_vec, prefix = "2001")]), gsub("-.*.", "", list.files(pattern = ".tif")))
 if(length(K_ERA_fs) < length(Dates_vec)*2){ # ERA Product Check: if we do not have twice as many ERA files as MOD13A2 files
   print("Kriging ERA5-Land data now.")
   FUN_Krig(Var_short = "AT") # krig airtemp data
