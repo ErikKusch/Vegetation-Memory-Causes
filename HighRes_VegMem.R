@@ -134,7 +134,7 @@ FUN_DownloadCLIM <- function(Var_long = "2m_temperature", Var_short = "AT"){
   parallel::stopCluster(cl)
 } # end of FUN_DownloadCLIM
 setwd(Dir.ERA)
-ERA_fs <- list.files(pattern = ".tif") # list all tif files in ERA directory, needs to check for unkriged files only!!! exclude everything beginnign with "K_
+ERA_fs <- list.files(pattern = ".tif")[!startsWith(prefix = "K_", x = list.files(pattern = ".tif"))] # list all unkriged files
 if(length(ERA_fs) < (length(Dates_vec)+sum(startsWith(x = Dates_vec, prefix = "2001")))*2){ # ERA Product Check: if we do not have twice as many ERA files as MOD13A2 files
   print("Downloading ERA5-Land data now.")
   FUN_DownloadCLIM(Var_long = "2m_temperature", Var_short = "AT") # download airtemp data
@@ -249,6 +249,7 @@ FUN_Krig <- function(Var_short = "AT"){
     Kriged_ras <- mask(Kriged_ras, Land_shp)
     raster::writeRaster(Kriged_ras, filename = paste0("K_", Name), format = "GTiff", overwrite = TRUE)
     unlink(Dir.Date, recursive = TRUE)
+    unlink(file.path(Dir.ERA, paste0(Name, ".tif")), recursive = TRUE)
   } # end of Dates loop
 } # end of FUN_Krig
 setwd(Dir.ERA)
