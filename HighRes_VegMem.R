@@ -237,7 +237,7 @@ FUN_Krig <- function(Var_short = "AT"){
       cl <- parallel::makeCluster(numberOfCores) # Assuming X node cluster
       doParallel::registerDoParallel(cl) # registering cores
       foreach::foreach(Krig_Iter = 1:length(Extents), .packages = c("KrigR"), .export = c("Dir.ERA", "Covs_ls", "Clim_train", "Land_shp", "Var_short", "Extents", "Dir.Date", "Names_tiles")) %:% when(!file.exists(file.path(Dir.Date, paste0(Names_tiles[Krig_Iter], ".nc")))) %dopar% { # tiles loop: loop over all tiles
-        eval(parse(text=looptext)) # evaluate the kriging specification per layer
+        invisible <- capture.output(eval(parse(text=looptext))) # evaluate the kriging specification per layer
       } # end of tiles loop
       stopCluster(cl) # stop cluster
     }else{
@@ -274,7 +274,7 @@ FUN_Krig <- function(Var_short = "AT"){
     # Kriged_ras <- mask(Kriged_ras, Land_shp)
     raster::writeRaster(Kriged_ras, filename = paste0("K_", Name), format = "GTiff", overwrite = TRUE)
     unlink(Dir.Date, recursive = TRUE)
-    unlink(file.path(Dir.ERA, paste0(Name, ".tif")), recursive = TRUE)
+    # unlink(file.path(Dir.ERA, paste0(Name, ".tif")), recursive = TRUE)
   } # end of Dates loop
 } # end of FUN_Krig
 setwd(Dir.ERA)
