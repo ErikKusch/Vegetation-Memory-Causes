@@ -3,9 +3,8 @@ rm(list = ls()) # clearing environment
 if("KrigR" %in% rownames(installed.packages()) == FALSE){ # KrigR check
   Sys.setenv(R_REMOTES_NO_ERRORS_FROM_WARNINGS="true")
   devtools::install_github("https://github.com/ErikKusch/KrigR")
-}else{ 
-  library(KrigR) 
 }
+library(KrigR) 
 
 ####--------------- DIRECTORIES -------------------------------------------------
 mainDir <- getwd() # extract the project folder location
@@ -146,7 +145,7 @@ FUN_DownloadCLIM <- function(Var_long = "2m_temperature", Var_short = "AT"){
 } # end of FUN_DownloadCLIM
 setwd(Dir.ERA)
 ERA_fs <- list.files(pattern = ".tif")[!startsWith(prefix = "K_", x = list.files(pattern = ".tif"))] # list all unkriged files
-if(length(ERA_fs) < (length(Dates_vec)+sum(startsWith(x = Dates_vec, prefix = "2001")))*2){ # ERA Product Check: if we do not have twice as many ERA files as MOD13A2 files
+while(length(ERA_fs) < (length(Dates_vec)+sum(startsWith(x = Dates_vec, prefix = "2001")))*2){ # ERA Product Check: if we do not have twice as many ERA files as MOD13A2 files
   print("Downloading ERA5-Land data now.")
   FUN_DownloadCLIM(Var_long = "2m_temperature", Var_short = "AT") # download airtemp data
   FUN_DownloadCLIM(Var_long = "volumetric_soil_water_layer_1", Var_short = "SM") # download qsoil1 data
@@ -161,6 +160,7 @@ if(file.exists(file.path(Dir.COV, "GMTED2010_Target.nc"))){
 }else{
   Covs_ls <- KrigR::download_DEM(Train_ras = raster::raster(file.path(Dir.ERA, list.files(Dir.ERA)[1])),
                                  Target_res = raster::raster(file.path(Dir.EVI, list.files(Dir.EVI)[1])),
+                                 Shape = Land_shp,
                                  Dir = Dir.COV,
                                  Keep_Temporary = TRUE
   )
