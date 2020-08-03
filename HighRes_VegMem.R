@@ -144,7 +144,8 @@ FUN_DownloadCLIM <- function(Var_long = "2m_temperature", Var_short = "AT"){
   }
 } # end of FUN_DownloadCLIM
 setwd(Dir.ERA)
-ERA_fs <- list.files(pattern = ".tif")[!startsWith(prefix = "K_", x = list.files(pattern = ".tif"))] # list all unkriged files
+ERA_fs <- list.files()[endsWith(x = list.files(), suffix = ".tif")]
+ERA_fs <- ERA_fs[!startsWith(prefix = "K_", x = ERA_fs)] # list all unkriged files
 while(length(ERA_fs) < (length(Dates_vec)+sum(startsWith(x = Dates_vec, prefix = "2001")))*2){ # ERA Product Check: if we do not have twice as many ERA files as MOD13A2 files
   print("Downloading ERA5-Land data now.")
   FUN_DownloadCLIM(Var_long = "2m_temperature", Var_short = "AT") # download airtemp data
@@ -158,8 +159,12 @@ if(file.exists(file.path(Dir.COV, "GMTED2010_Target.nc"))){
   Covs_ls <- list(raster::raster(file.path(Dir.COV, "GMTED2010_Train.nc")),
                   raster::raster(file.path(Dir.COV, "GMTED2010_Target.nc")))
 }else{
-  Covs_ls <- KrigR::download_DEM(Train_ras = raster::raster(file.path(Dir.ERA, list.files(Dir.ERA)[1])),
-                                 Target_res = raster::raster(file.path(Dir.EVI, list.files(Dir.EVI)[1])),
+  Train_ras <- raster::raster(file.path(Dir.ERA, ERA_fs[1]))
+  raster::extent(Train_ras) <- raster::extent(-180,180,-90,90)
+  Target_res <- raster::raster(file.path(Dir.EVI, list.files(Dir.EVI)[1]))
+  raster::extent(Target_res) <- raster::extent(-180,180,-90,90)
+  Covs_ls <- KrigR::download_DEM(Train_ras = Train_ras,
+                                 Target_res = Target_res,
                                  Shape = Land_shp,
                                  Dir = Dir.COV,
                                  Keep_Temporary = TRUE
