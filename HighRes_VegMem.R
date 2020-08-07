@@ -159,13 +159,8 @@ if(file.exists(file.path(Dir.COV, "GMTED2010_Target.nc"))){
   Covs_ls <- list(raster::raster(file.path(Dir.COV, "GMTED2010_Train.nc")),
                   raster::raster(file.path(Dir.COV, "GMTED2010_Target.nc")))
 }else{
-  Train_ras <- raster::raster(file.path(Dir.ERA, ERA_fs[1]))
-  raster::extent(Train_ras) <- raster::extent(-180,180,-90,90)
-  Target_res <- raster::raster(file.path(Dir.EVI, list.files(Dir.EVI)[1]))
-  raster::extent(Target_res) <- raster::extent(-180,180,-90,90)
-  Covs_ls <- KrigR::download_DEM(Train_ras = Train_ras,
-                                 Target_res = Target_res,
-                                 Shape = Land_shp,
+  Covs_ls <- KrigR::download_DEM(Train_ras = raster::raster(file.path(Dir.ERA, list.files(Dir.ERA)[1])),
+                                 Target_res = raster::raster(file.path(Dir.EVI, list.files(Dir.EVI)[1])),
                                  Dir = Dir.COV,
                                  Keep_Temporary = TRUE
   )
@@ -227,6 +222,8 @@ FUN_Krig <- function(Var_short = "AT"){
       try(Covs_train <- raster::mask(Covs_train, cropped_shp), silent = TRUE) # attempt masking (fails if on sea pixel)
       Covs_target <- raster::crop(Covs_ls[[2]], Extents[[Krig_Iter]])  # crop target covariates
       try(Covs_target <- raster::mask(Covs_target, cropped_shp), silent = TRUE) # attempt masking (fails if on sea pixel)
+      extent(Covs_target) <- extent(cropped_train)
+      extent(Covs_train) <- extent(cropped_train)
       try( # try because of singular covariance matrices which can be an issue if there isn't enough data 
         Dummy_ls <- KrigR::krigR(
           Data = cropped_train,
@@ -257,15 +254,17 @@ FUN_Krig <- function(Var_short = "AT"){
         setTxtProgressBar(ProgBar, Krig_Iter) # update progress bar
       }
     }
-    setwd(Dir.Date)
+    # setwd(Dir.Date)
     Krig_fs <- list.files(pattern = ".nc")[startsWith(prefix = "TempFile", x = list.files(pattern = ".nc"))] # list all data tiles of current date
     SE_fs <- list.files(pattern = ".nc")[startsWith(prefix = "SE", x = list.files(pattern = ".nc"))] # list all uncertainty tiles of current date
     print(paste("Merging", Var_short, "tiles for", Name))
     Krigs_ls <- as.list(rep(NA, length(Krig_fs)))
     SEs_ls <- as.list(rep(NA, length(SE_fs)))
-    for(i in 1:length(Krigs_ls)) { # 
+    for(i in 1:length(Krigs_ls)) { #
       Krigs_ls[[i]] <- raster::raster(Krig_fs[i])
-      SEs_ls[[i]] <- raster::raster(SE_fs[i])
+    }
+    for(k in 1:length(SEs_ls)) { #
+      SEs_ls[[k]] <- raster::raster(SE_fs[k])
     }
     Krigs_ls$fun <- mean
     Krigs_ls$tolerance <- 1.5
@@ -280,13 +279,12 @@ FUN_Krig <- function(Var_short = "AT"){
     # Kriged_ras <- mask(Kriged_ras, Land_shp)
     raster::writeRaster(Kriged_ras, filename = paste0("K_", Name), format = "GTiff", overwrite = TRUE)
     unlink(Dir.Date, recursive = TRUE)
-    # unlink(file.path(Dir.ERA, paste0(Name, ".tif")), recursive = TRUE)
   } # end of Dates loop
 } # end of FUN_Krig
 setwd(Dir.ERA)
-K_ERA_fs <- list.files(pattern = ".tif")[startsWith(prefix = "K_", x = list.files(pattern = ".tif"))] # list all kriged files
-Dates_vec <- c(gsub(pattern = "2001", replacement = "2000", x = Dates_vec[startsWith(x = Dates_vec, prefix = "2001")]), gsub("-.*.", "", list.files(pattern = ".tif")))
-if(length(K_ERA_fs) < length(Dates_vec)*2){ # ERA Product Check: if we do not have twice as many ERA files as MOD13A2 files
+K_ERA_fs <- list.files()[endsWith(x = list.files(), suffix = ".tif")]
+K_ERA_fs <- ERA_fs[startsWith(prefix = "K_", x = ERA_fs)] # list all kriged files
+if(length(K_ERA_fs) < (length(Dates_vec)+sum(startsWith(x = Dates_vec, prefix = "2001")))*2){ # ERA Product Check: if we do not have twice as many ERA files as MOD13A2 files + opne year worth of bi-weekly records appended to it
   print("Kriging ERA5-Land data now.")
   FUN_Krig(Var_short = "AT") # krig airtemp data
   FUN_Krig(Var_short = "SM") # krig qsoil data
