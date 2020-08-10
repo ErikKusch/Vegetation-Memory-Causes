@@ -159,7 +159,7 @@ if(file.exists(file.path(Dir.COV, "GMTED2010_Target.nc"))){
   Covs_ls <- list(raster::raster(file.path(Dir.COV, "GMTED2010_Train.nc")),
                   raster::raster(file.path(Dir.COV, "GMTED2010_Target.nc")))
 }else{
-  Covs_ls <- KrigR::download_DEM(Train_ras = raster::raster(file.path(Dir.ERA, list.files(Dir.ERA)[1])),
+  Covs_ls <- KrigR::download_DEM(Train_ras = raster::raster(file.path(Dir.ERA, ERA_fs[1])), # or this want to run off the netcdf intermediate?
                                  Target_res = raster::raster(file.path(Dir.EVI, list.files(Dir.EVI)[1])),
                                  Dir = Dir.COV,
                                  Keep_Temporary = TRUE
@@ -222,8 +222,8 @@ FUN_Krig <- function(Var_short = "AT"){
       try(Covs_train <- raster::mask(Covs_train, cropped_shp), silent = TRUE) # attempt masking (fails if on sea pixel)
       Covs_target <- raster::crop(Covs_ls[[2]], Extents[[Krig_Iter]])  # crop target covariates
       try(Covs_target <- raster::mask(Covs_target, cropped_shp), silent = TRUE) # attempt masking (fails if on sea pixel)
-      extent(Covs_target) <- extent(cropped_train)
-      extent(Covs_train) <- extent(cropped_train)
+      # extent(Covs_target) <- extent(cropped_train)
+      # extent(Covs_train) <- extent(cropped_train)
       try( # try because of singular covariance matrices which can be an issue if there isn't enough data 
         Dummy_ls <- KrigR::krigR(
           Data = cropped_train,
@@ -254,7 +254,7 @@ FUN_Krig <- function(Var_short = "AT"){
         setTxtProgressBar(ProgBar, Krig_Iter) # update progress bar
       }
     }
-    # setwd(Dir.Date)
+    setwd(Dir.Date)
     Krig_fs <- list.files(pattern = ".nc")[startsWith(prefix = "TempFile", x = list.files(pattern = ".nc"))] # list all data tiles of current date
     SE_fs <- list.files(pattern = ".nc")[startsWith(prefix = "SE", x = list.files(pattern = ".nc"))] # list all uncertainty tiles of current date
     print(paste("Merging", Var_short, "tiles for", Name))
