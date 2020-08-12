@@ -209,7 +209,9 @@ FUN_Krig <- function(Var_short = "AT"){
   Clim_fs <- list.files(pattern = ".tif")[startsWith(prefix = Var_short, x = list.files(pattern = ".tif"))] # list all unkriged files belonging to target variable
   for(Dates_Iter in 1:length(Clim_fs)){ # Dates loop: loop over all dates for which we've got ERA data
     Name <- gsub(pattern = ".tif", replacement ="", x = Clim_fs[Dates_Iter])
-    if(file.exists(file.path(Dir.ERA, paste0("K_", Name, ".tif")))){next()}
+    if(file.exists(file.path(Dir.ERA, paste0("K_", Name, ".tif")))){
+      print(paste(Name, "already kriged"))
+      next()}
     Dir.Date <- file.path(Dir.ERA, Name) # register directory for tiles of this date
     dir.create(Dir.Date) # create directory for tiles of this date
     Clim_train <- raster::raster(file.path(Dir.ERA, Clim_fs[Dates_Iter])) # load training data for this date
@@ -275,9 +277,11 @@ FUN_Krig <- function(Var_short = "AT"){
     SEs_glob <- do.call(raster::mosaic, SEs_ls)
     values(SEs_glob)[which(values(Krigs_glob) < 180 | values(Krigs_glob) > 320)] <- NA
     setwd(Dir.ERA)
+    print(paste("Saving kriged", Name))
     Kriged_ras <- stack(Krigs_glob, SEs_glob)
     # Kriged_ras <- mask(Kriged_ras, Land_shp)
     raster::writeRaster(Kriged_ras, filename = paste0("K_", Name), format = "GTiff", overwrite = TRUE)
+    print(paste("Removing temporary directory", Name))
     unlink(Dir.Date, recursive = TRUE)
   } # end of Dates loop
 } # end of FUN_Krig
@@ -289,3 +293,4 @@ if(length(K_ERA_fs) < (length(Dates_vec)+sum(startsWith(x = Dates_vec, prefix = 
   FUN_Krig(Var_short = "AT") # krig airtemp data
   FUN_Krig(Var_short = "SM") # krig qsoil data
 } # end of ERA Product Check
+setwd(mainDir)
