@@ -154,26 +154,92 @@ while(length(ERA_fs) < (length(Dates_vec)+sum(startsWith(x = Dates_vec, prefix =
 setwd(mainDir)
 
 ####--------------- COVARIATE DATA DOWNLOAD ----------------------------------------
-print("Loading covariate data.")
+print("Loading DEM covariate data. #####################################################")
 if(file.exists(file.path(Dir.COV, "GMTED2010_Target.nc"))){
+  print("DEM covariate data already downloaded.")
   Covs_ls <- list(raster::raster(file.path(Dir.COV, "GMTED2010_Train.nc")),
                   raster::raster(file.path(Dir.COV, "GMTED2010_Target.nc")))
 }else{
+  print("This process takes about 25min (on the AU server, at least).")
   Covs_ls <- KrigR::download_DEM(Train_ras = raster::raster(file.path(Dir.ERA, ERA_fs[1])), # or this want to run off the netcdf intermediate?
                                  Target_res = raster::raster(file.path(Dir.EVI, list.files(Dir.EVI)[1])),
                                  Dir = Dir.COV,
                                  Keep_Temporary = TRUE
   )
+  Covs_ls[[2]] <- raster::raster(file.path(Dir.COV, "GMTED2010_Target.nc")) # to get around attribute issues
 }
+
+print("Loading SOIL covariate data. #####################################################")
+# documentation of these can be found here http://globalchange.bnu.edu.cn/research/soil4.jsp
+SoilVovs_vec <- c("tkdry", "tksat", "csol", "k_s", "lambda", "psi", "theta_s")
+# create lists to combine soil data with dem data
+Covs_Coarse_ls <- as.list(rep(NA, length(SoilVovs_vec)+1))
+Covs_Coarse_ls[[1]] <- Covs_ls[[1]]
+names(Covs_Coarse_ls) <- c("DEM", SoilVovs_vec)
+Covs_Target_ls <- as.list(rep(NA, length(SoilVovs_vec)+1))
+Covs_Target_ls[[1]] <- Covs_ls[[2]]
+names(Covs_Target_ls) <- c("DEM", SoilVovs_vec)
+## Downloading, unpacking, and resampling
+for(Soil_Iter in SoilVovs_vec){
+  if(!file.exists(file.path(Dir.COV, paste0(Soil_Iter, "_Target")))) { # if not downloaded and processed yet
+    paste("Handling", Soil_Iter, "data.")
+    Dir.Soil <- file.path(Dir.COV, Soil_Iter)
+    dir.create(Dir.Soil)
+    download.file(paste0("http://globalchange.bnu.edu.cn/download/data/worldptf/", Soil_Iter,".zip"),
+                  destfile = file.path(Dir.Soil, paste0(Soil_Iter, ".zip"))
+    ) # download data
+    unzip(file.path(Dir.Soil, paste0(Soil_Iter, ".zip")), exdir = Dir.Soil) # unzip data
+    #resampling
+    File <- list.files(Dir.Soil, pattern = ".nc")[1] # does this select the correct file in every download?
+    Resample_ras <- raster(file.path(Dir.Soil, File))
+    ResampleCoarse_ras <- raster::resample(Resample_ras, raster::raster(file.path(Dir.ERA, ERA_fs[1])))
+    ResampleFine_ras <- raster::resample(Resample_ras, raster::raster(file.path(Dir.EVI, list.files(Dir.EVI)[1])))
+    Covs_Coarse_ls[[which(names(Covs_Coarse_ls) == Soil_Iter)]] <- ResampleCoarse_ras
+    writeRaster(x = ResampleCoarse_ras, filename = file.path(Dir.COV, paste0(Soil_Iter, "_Train")), format = "CDF")
+    Covs_Target_ls[[which(names(Covs_Target_ls) == Soil_Iter)]] <- ResampleFine_ras
+    writeRaster(x = ResampleFine_ras, filename = file.path(Dir.COV, paste0(Soil_Iter, "_Target")), format = "CDF")
+    unlink(Dir.Soil, recursive = TRUE)
+  }else{
+    paste(Soil_Iter, "already downloaded and processed.")
+    Covs_Coarse_ls[[which(names(Covs_Coarse_ls) == Soil_Iter)]] <- raster(file.path(Dir.COV, paste0(Soil_Iter, "_Train.nc")))
+    Covs_Target_ls[[which(names(Covs_Target_ls) == Soil_Iter)]] <- raster(file.path(Dir.COV, paste0(Soil_Iter, "_Target.nc")))
+  }
+}
+## Combining into stacked raster with DEM data and pushing to Covs_ls
+Covs_ls[[1]] <- stack(Covs_Coarse_ls)
+Covs_ls[[2]] <- stack(Covs_Target_ls)
 raster::extent(Covs_ls[[1]]) <- raster::extent(-180,180,-90,90)
 raster::extent(Covs_ls[[2]]) <- raster::extent(-180,180,-90,90)
+
+## Cleaning Environment
+rm(list("Dir.Soil", "File", "Covs_Target_ls", "Covs_Coarse_ls", "ResampleFine_ras", "ResampleCoarse_ras", "Soil_Iter"))
+
+####--------------- COVARIATE & DATA MASKING ---------------------------------------
+print("Masking data for landmasses. ################################################")
+if(file.exists(file.path(Dir.COV, "Covs_Target_Landmasked.nc"))){
+  print("Data already masked.")
+  Covs_ls <- list(raster::raster(file.path(Dir.COV, "Covs_Train_Landmasked.nc")),
+                  raster::raster(file.path(Dir.COV, "Covs_Target_Landmasked.nc")))
+}else{
+  print("This process takes about XXmin (on the AU server, at least).")
+  Mask_Coarse <- KrigR:::mask_Shape(base.map = Covs_ls[[1]], Shape = Land_shp)
+  Covs_ls[[1]] <- mask(Covs_ls[[1]], Mask_Coarse)
+  writeRaster(Covs_ls[[1]], file.path(Dir.COV, "Covs_Train_Landmasked.nc"))
+  Mask_Fine <- KrigR:::mask_Shape(base.map = Covs_ls[[2]], Shape = Land_shp)
+  Covs_ls[[2]] <- mask(Covs_ls[[2]], Mask_Fine)
+  writeRaster(Covs_ls[[2]], file.path(Dir.COV, "Covs_Target_Landmasked.nc"))
+  rm(list = c("Mask_Fine", "Mask_Coarse"))
+}
+
 ####--------------- KRIGING OF CLIMATE DATA ----------------------------------------
 #### ESTABLISH TILES
+TileSize <- 20
+TileOverlap <- 5
 if(file.exists(file.path(Dir.COV, "Extents_ls.RData"))){
   load(file.path(Dir.COV, "Extents_ls.RData"))
 }else{
   Extents <- list() # empty list for extent objects
-  res_tiles <- 3 # resolution of tiles
+  res_tiles <-  TileSize # resolution of tiles
   Lat_Tiles <- (150-res_tiles)/res_tiles # we only cover 150° of latitude
   Lon_Tiles <- (360-res_tiles)/res_tiles # we cover the full 360° of longitude
   z <- 1 # enumerator for list elements
@@ -189,21 +255,34 @@ if(file.exists(file.path(Dir.COV, "Extents_ls.RData"))){
                                       -60+res_tiles*i,
                                       -60+res_tiles*(i+1)))
       Clim_check <- raster::crop(Clim_ras, Extent_curr)
-      Land_check <- raster::crop(Covs_ls[[2]], Extent_curr)
-      try(Land_check <- raster::mask(Land_check, cropped_shp), silent = TRUE)
-      if(!all(is.na(c(NA, Land_check))) & length(which(!is.na(values(Clim_check)))) > 5){ # sanity check: if kriging can be performed with this extent
+      Land_check <- raster::crop(Covs_ls[[1]][[1]], Extent_curr)
+      cropped_shp <- raster::crop(Land_shp, Extent_curr)
+      try(Land_check <- raster::mask(Land_check, cropped_shp, getCover = TRUE), silent = TRUE)
+      Land_check[Land_check==0] <- NA # set all cells which the shape doesn't touch to NA
+      # plot(Land_check, main = sum(!is.na(values(Land_check))) > 5 & length(which(!is.na(values(Clim_check)))) > 5)
+      if(sum(!is.na(values(Land_check))) > 5 & length(which(!is.na(values(Clim_check)))) > 5){ # sanity check: if kriging can be performed with this extent
+        
+        ## Buffer for overlapping tiles
+        Extent_curr[c(1,3)] <- Extent_curr[c(1,3)] - TileOverlap
+        Extent_curr[c(2,4)] <- Extent_curr[c(2,4)] + TileOverlap
+        if(Extent_curr[1] < -180){Extent_curr[1] <- -180}
+        if(Extent_curr[2] > 180){Extent_curr[2] <- 180}
+        if(Extent_curr[3] < -90){Extent_curr[3] <- -90}
+        if(Extent_curr[4] > 90){Extent_curr[4] <- 90}
         Extents[[z]] <- Extent_curr # save extent to list
+        # print(Extents[[z]])
         z <- z + 1 # raise enumerator of list elements
       } # end of sanity check
       Prog_Iter <- Prog_Iter + 1
       setTxtProgressBar(ProgBar, Prog_Iter) # update progress bar
     } # end of lon loop
   } # end of lat loop
-  save(Extents, file = file.path(Dir.COV, "Extents_ls.RData"))
+  save(Extents, file = file.path(Dir.COV, paste0("Extents", TileSize, "_", TileOverlap, "_ls.RData")))
 }
 Names_tiles = as.list(paste("TempFile_", 1:length(Extents), sep="")) # names of tiles for names of temporary files
 
 #### KRIGING
+stop("Adjust kriging equation for qsoil1")
 FUN_Krig <- function(Var_short = "AT"){
   setwd(Dir.ERA)  
   Clim_fs <- list.files(pattern = ".tif")[startsWith(prefix = Var_short, x = list.files(pattern = ".tif"))] # list all unkriged files belonging to target variable
