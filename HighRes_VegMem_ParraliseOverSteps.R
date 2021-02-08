@@ -181,8 +181,8 @@ Covs_Target_ls[[1]] <- Covs_ls[[2]]
 names(Covs_Target_ls) <- c("DEM", SoilVovs_vec)
 ## Downloading, unpacking, and resampling
 for(Soil_Iter in SoilVovs_vec){
-  if(!file.exists(file.path(Dir.COV, paste0(Soil_Iter, "_Target")))) { # if not downloaded and processed yet
-    paste("Handling", Soil_Iter, "data.")
+  if(!file.exists(file.path(Dir.COV, paste0(Soil_Iter, "_Target.nc")))) { # if not downloaded and processed yet
+    print(paste("Handling", Soil_Iter, "data."))
     Dir.Soil <- file.path(Dir.COV, Soil_Iter)
     dir.create(Dir.Soil)
     download.file(paste0("http://globalchange.bnu.edu.cn/download/data/worldptf/", Soil_Iter,".zip"),
@@ -190,7 +190,7 @@ for(Soil_Iter in SoilVovs_vec){
     ) # download data
     unzip(file.path(Dir.Soil, paste0(Soil_Iter, ".zip")), exdir = Dir.Soil) # unzip data
     #resampling
-    File <- list.files(Dir.Soil, pattern = ".nc")[1] # does this select the correct file in every download?
+    File <- list.files(Dir.Soil, pattern = ".nc")[1] # only keep first soil layer
     Resample_ras <- raster(file.path(Dir.Soil, File))
     ResampleCoarse_ras <- raster::resample(Resample_ras, raster::raster(file.path(Dir.ERA, ERA_fs[1])))
     ResampleFine_ras <- raster::resample(Resample_ras, raster::raster(file.path(Dir.EVI, list.files(Dir.EVI)[1])))
@@ -200,7 +200,7 @@ for(Soil_Iter in SoilVovs_vec){
     writeRaster(x = ResampleFine_ras, filename = file.path(Dir.COV, paste0(Soil_Iter, "_Target")), format = "CDF")
     unlink(Dir.Soil, recursive = TRUE)
   }else{
-    paste(Soil_Iter, "already downloaded and processed.")
+    print(paste(Soil_Iter, "already downloaded and processed."))
     Covs_Coarse_ls[[which(names(Covs_Coarse_ls) == Soil_Iter)]] <- raster(file.path(Dir.COV, paste0(Soil_Iter, "_Train.nc")))
     Covs_Target_ls[[which(names(Covs_Target_ls) == Soil_Iter)]] <- raster(file.path(Dir.COV, paste0(Soil_Iter, "_Target.nc")))
   }
@@ -212,7 +212,8 @@ raster::extent(Covs_ls[[1]]) <- raster::extent(-180,180,-90,90)
 raster::extent(Covs_ls[[2]]) <- raster::extent(-180,180,-90,90)
 
 ## Cleaning Environment
-rm(list("Dir.Soil", "File", "Covs_Target_ls", "Covs_Coarse_ls", "ResampleFine_ras", "ResampleCoarse_ras", "Soil_Iter"))
+rm(list = c("Dir.Soil", "File", "Covs_Target_ls", "Covs_Coarse_ls", "Resample_ras","ResampleFine_ras", "ResampleCoarse_ras", "Soil_Iter"))
+gc()
 
 ####--------------- COVARIATE & DATA MASKING ---------------------------------------
 print("Masking data for landmasses. ################################################")
@@ -221,14 +222,17 @@ if(file.exists(file.path(Dir.COV, "Covs_Target_Landmasked.nc"))){
   Covs_ls <- list(raster::raster(file.path(Dir.COV, "Covs_Train_Landmasked.nc")),
                   raster::raster(file.path(Dir.COV, "Covs_Target_Landmasked.nc")))
 }else{
+  B <- Sys.time()
   print("This process takes about XXmin (on the AU server, at least).")
-  Mask_Coarse <- KrigR:::mask_Shape(base.map = Covs_ls[[1]], Shape = Land_shp)
+  Mask_Coarse <- KrigR:::mask_Shape(base.map = mean(Covs_ls[[1]]), Shape = Land_shp) # run on mean of raster to temove all cells where any layer holds an NA
   Covs_ls[[1]] <- mask(Covs_ls[[1]], Mask_Coarse)
   writeRaster(Covs_ls[[1]], file.path(Dir.COV, "Covs_Train_Landmasked.nc"))
-  Mask_Fine <- KrigR:::mask_Shape(base.map = Covs_ls[[2]], Shape = Land_shp)
+  Mask_Fine <- KrigR:::mask_Shape(base.map = mean(Covs_ls[[2]]), Shape = Land_shp) # run on mean of raster to temove all cells where any layer holds an NA
   Covs_ls[[2]] <- mask(Covs_ls[[2]], Mask_Fine)
   writeRaster(Covs_ls[[2]], file.path(Dir.COV, "Covs_Target_Landmasked.nc"))
   rm(list = c("Mask_Fine", "Mask_Coarse"))
+  E <- Sys.time()
+  B-E
 }
 
 ####--------------- KRIGING OF CLIMATE DATA ----------------------------------------
