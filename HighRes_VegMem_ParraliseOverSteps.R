@@ -248,11 +248,11 @@ names(Covs_ls[[2]]) <- c("DEM", SoilVovs_vec)
 print("Establishing Tiles for Kriging. ################################################")
 #### ESTABLISH TILES
 raster::extent(Covs_ls[[1]]) <- raster::extent(-180,180,-90,90) # makes tile computation much easier
-TileSize <- 20
-TileOverlap <- 5
-if(file.exists(file.path(Dir.COV, file.path(Dir.COV, paste0("Extents", TileSize, "_", TileOverlap, "_ls.RData"))))){
+TileSize <- 2
+TileOverlap <- .5
+if(file.exists(file.path(Dir.COV, paste0("Extents", TileSize, "_", TileOverlap, "_ls.RData")))){
   print(paste0("Tiles already established using tile size of ", TileSize, "° and an overlap of ", TileOverlap, "°."))
-  load(file.path(Dir.COV, "Extents_ls.RData"))
+  load(file.path(Dir.COV, paste0("Extents", TileSize, "_", TileOverlap, "_ls.RData")))
 }else{
   Extents <- list() # empty list for extent objects
   res_tiles <-  TileSize # resolution of tiles
@@ -265,7 +265,7 @@ if(file.exists(file.path(Dir.COV, file.path(Dir.COV, paste0("Extents", TileSize,
   Lon_Tiles <- (LonRange-res_tiles)/res_tiles
   z <- 1 # enumerator for list elements
   Clim_ras <- raster::raster(file.path(Dir.ERA, list.files(Dir.ERA)[1]))
-  raster::extent(Clim_ras) <- raster::extent(-180,180,-90,90)
+  # raster::extent(Clim_ras) <- raster::extent(-180,180,-90,90)
   print(paste0("#### Checking for which tiles to krig on using tile size of ", TileSize, "° and an overlap of ", TileOverlap, "°. ####"))
   Prog_Iter <- 0
   ProgBar <- txtProgressBar(min = 0, max = (Lat_Tiles+1) * (Lon_Tiles+1), style = 3)
@@ -322,8 +322,8 @@ FUN_Krig <- function(Var_short = "AT", KrigingEquation = "ERA ~ DEM"){
       try(Covs_train <- raster::mask(Covs_train, cropped_shp), silent = TRUE) # attempt masking (fails if on sea pixel)
       Covs_target <- raster::crop(Covs_ls[[2]], Extents[[Krig_Iter]])  # crop target covariates
       try(Covs_target <- raster::mask(Covs_target, cropped_shp), silent = TRUE) # attempt masking (fails if on sea pixel)
-      # extent(Covs_target) <- extent(cropped_train)
-      # extent(Covs_train) <- extent(cropped_train)
+      extent(Covs_target) <- extent(cropped_train)
+      extent(Covs_train) <- extent(cropped_train)
       try( # try because of singular covariance matrices which can be an issue if there isn't enough data 
         Dummy_ls <- KrigR::krigR(
           Data = cropped_train,
@@ -337,6 +337,7 @@ FUN_Krig <- function(Var_short = "AT", KrigingEquation = "ERA ~ DEM"){
         ), 
         silent=TRUE)
         "
+    Begin <- Sys.Date()
       print(paste("Kriging", Name))
       ProgBar <- txtProgressBar(min = 0, max = length(Extents), style = 3) # establish progress bar
       for(Krig_Iter in 1:length(Extents)){
@@ -372,6 +373,8 @@ FUN_Krig <- function(Var_short = "AT", KrigingEquation = "ERA ~ DEM"){
     # Kriged_ras <- mask(Kriged_ras, Land_shp)
     raster::writeRaster(Kriged_ras, filename = paste0("K_", Name), format = "GTiff", overwrite = TRUE)
     print(paste("Removing temporary directory", Name))
+    End <- Sys.Date()
+    print(End-Begin)
     unlink(Dir.Date, recursive = TRUE)
   } # end of Dates loop
 stopCluster(cl) # stop cluster
