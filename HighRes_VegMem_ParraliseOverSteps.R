@@ -338,14 +338,11 @@ FUN_Krig <- function(Var_short = "AT", KrigingEquation = "ERA ~ DEM"){
         silent=TRUE)
         "
     Begin <- Sys.Date()
-      print(paste("Kriging", Name))
-      ProgBar <- txtProgressBar(min = 0, max = length(Extents), style = 3) # establish progress bar
-      for(Krig_Iter in 1:length(Extents)){
-        if(file.exists(file.path(Dir.Date, paste0(Names_tiles[Krig_Iter], ".nc")))){
-          next()
-        }
-        invisible <- capture.output(eval(parse(text=looptext))) # evaluate the kriging specification per layer
-        setTxtProgressBar(ProgBar, Krig_Iter) # update progress bar
+    print(paste("Kriging", Name))
+    ProgBar <- txtProgressBar(min = 0, max = length(Extents), style = 3) # establish progress bar
+    for(Krig_Iter in 1:length(Extents)){
+      if(file.exists(file.path(Dir.Date, paste0(Names_tiles[Krig_Iter], ".nc")))){
+        next()
       }
       invisible <- capture.output(eval(parse(text=looptext))) # evaluate the kriging specification per layer
       setTxtProgressBar(ProgBar, Krig_Iter) # update progress bar
