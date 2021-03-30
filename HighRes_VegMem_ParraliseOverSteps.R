@@ -324,7 +324,7 @@ FUN_Krig <- function(Var_short = "AT", KrigingEquation = "ERA ~ DEM"){
       try(Covs_target <- raster::mask(Covs_target, cropped_shp), silent = TRUE) # attempt masking (fails if on sea pixel)
       extent(Covs_target) <- extent(cropped_train)
       extent(Covs_train) <- extent(cropped_train)
-      try( # try because of singular covariance matrices which can be an issue if there isn't enough data 
+      try( # try because of singular covariance matrices which can be an issue if there isn't enough data
         Dummy_ls <- KrigR::krigR(
           Data = cropped_train,
           Covariates_coarse = Covs_train,
@@ -333,8 +333,7 @@ FUN_Krig <- function(Var_short = "AT", KrigingEquation = "ERA ~ DEM"){
           Cores = 1,
           Dir = Dir.Date,
           FileName = Names_tiles[Krig_Iter],
-          Keep_Temporary = FALSE
-        ), 
+          Keep_Temporary = FALSE),
         silent=TRUE)
         "
     Begin <- Sys.Date()
