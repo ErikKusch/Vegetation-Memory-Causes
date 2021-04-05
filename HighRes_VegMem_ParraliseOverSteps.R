@@ -334,7 +334,8 @@ FUN_Krig <- function(Var_short = "AT", KrigingEquation = "ERA ~ DEM"){
           Dir = Dir.Date,
           FileName = Names_tiles[Krig_Iter],
           Keep_Temporary = FALSE,
-          SingularTry = 20),
+          SingularTry = 20,
+          nmax = 480),
         silent=TRUE)
         "
     Begin <- Sys.Date()
