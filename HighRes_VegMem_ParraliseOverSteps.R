@@ -338,15 +338,15 @@ FUN_Krig <- function(Var_short = "AT", KrigingEquation = "ERA ~ DEM"){
         silent=TRUE)
         "
     Begin <- Sys.Date()
-      print(paste("Kriging", Name))
-      ProgBar <- txtProgressBar(min = 0, max = length(Extents), style = 3) # establish progress bar
-      for(Krig_Iter in 1:length(Extents)){
-        if(file.exists(file.path(Dir.Date, paste0(Names_tiles[Krig_Iter], ".nc")))){
-          next()
-        }
-        invisible <- capture.output(eval(parse(text=looptext))) # evaluate the kriging specification per layer
-        setTxtProgressBar(ProgBar, Krig_Iter) # update progress bar
+    print(paste("Kriging", Name))
+    ProgBar <- txtProgressBar(min = 0, max = length(Extents), style = 3) # establish progress bar
+    for(Krig_Iter in 1:length(Extents)){
+      if(file.exists(file.path(Dir.Date, paste0(Names_tiles[Krig_Iter], ".nc")))){
+        next()
       }
+      invisible <- capture.output(eval(parse(text=looptext))) # evaluate the kriging specification per layer
+      setTxtProgressBar(ProgBar, Krig_Iter) # update progress bar
+    }
     setwd(Dir.Date)
     Krig_fs <- list.files(pattern = ".nc")[startsWith(prefix = "TempFile", x = list.files(pattern = ".nc"))] # list all data tiles of current date
     SE_fs <- list.files(pattern = ".nc")[startsWith(prefix = "SE", x = list.files(pattern = ".nc"))] # list all uncertainty tiles of current date
@@ -377,7 +377,7 @@ FUN_Krig <- function(Var_short = "AT", KrigingEquation = "ERA ~ DEM"){
     print(End-Begin)
     unlink(Dir.Date, recursive = TRUE)
   } # end of Dates loop
-stopCluster(cl) # stop cluster
+  stopCluster(cl) # stop cluster
 } # end of FUN_Krig
 setwd(Dir.ERA)
 K_ERA_fs <- list.files()[endsWith(x = list.files(), suffix = ".tif")]
