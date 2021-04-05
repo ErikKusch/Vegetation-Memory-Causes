@@ -337,6 +337,7 @@ FUN_Krig <- function(Var_short = "AT", KrigingEquation = "ERA ~ DEM"){
           SingularTry = 20,
           nmax = 480),
         silent=TRUE)
+      plot(Dummy_ls[[1]])
         "
     Begin <- Sys.Date()
     print(paste("Kriging", Name))
