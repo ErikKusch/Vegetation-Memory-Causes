@@ -248,8 +248,8 @@ names(Covs_ls[[2]]) <- c("DEM", SoilVovs_vec)
 print("Establishing Tiles for Kriging. ################################################")
 #### ESTABLISH TILES
 raster::extent(Covs_ls[[1]]) <- raster::extent(-180,180,-90,90) # makes tile computation much easier
-TileSize <- 2
-TileOverlap <- .5
+TileSize <- 10
+TileOverlap <- 2.5
 if(file.exists(file.path(Dir.COV, paste0("Extents", TileSize, "_", TileOverlap, "_ls.RData")))){
   print(paste0("Tiles already established using tile size of ", TileSize, "° and an overlap of ", TileOverlap, "°."))
   load(file.path(Dir.COV, paste0("Extents", TileSize, "_", TileOverlap, "_ls.RData")))
@@ -333,7 +333,8 @@ FUN_Krig <- function(Var_short = "AT", KrigingEquation = "ERA ~ DEM"){
           Cores = 1,
           Dir = Dir.Date,
           FileName = Names_tiles[Krig_Iter],
-          Keep_Temporary = FALSE),
+          Keep_Temporary = FALSE,
+          SingularTry = 20),
         silent=TRUE)
         "
     Begin <- Sys.Date()
