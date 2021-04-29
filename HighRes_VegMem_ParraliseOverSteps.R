@@ -248,8 +248,8 @@ names(Covs_ls[[2]]) <- c("DEM", SoilVovs_vec)
 print("Establishing Tiles for Kriging. ################################################")
 #### ESTABLISH TILES
 raster::extent(Covs_ls[[1]]) <- raster::extent(-180,180,-90,90) # makes tile computation much easier
-TileSize <- 10
-TileOverlap <- 2.5
+TileSize <- 5
+TileOverlap <- 1.25
 if(file.exists(file.path(Dir.COV, paste0("Extents", TileSize, "_", TileOverlap, "_ls.RData")))){
   print(paste0("Tiles already established using tile size of ", TileSize, "° and an overlap of ", TileOverlap, "°."))
   load(file.path(Dir.COV, paste0("Extents", TileSize, "_", TileOverlap, "_ls.RData")))
@@ -324,6 +324,7 @@ FUN_Krig <- function(Var_short = "AT", KrigingEquation = "ERA ~ DEM"){
       try(Covs_target <- raster::mask(Covs_target, cropped_shp), silent = TRUE) # attempt masking (fails if on sea pixel)
       extent(Covs_target) <- extent(cropped_train)
       extent(Covs_train) <- extent(cropped_train)
+      plot(Covs_target[[1]], main = Krig_Iter)
       try( # try because of singular covariance matrices which can be an issue if there isn't enough data
         Dummy_ls <- KrigR::krigR(
           Data = cropped_train,
@@ -337,9 +338,9 @@ FUN_Krig <- function(Var_short = "AT", KrigingEquation = "ERA ~ DEM"){
           SingularTry = 20,
           nmax = 480),
         silent=TRUE)
-      plot(Dummy_ls[[1]])
+      plot(Dummy_ls[[1]], main = Krig_Iter)
         "
-    Begin <- Sys.Date()
+    Begin <- Sys.time()
     print(paste("Kriging", Name))
     ProgBar <- txtProgressBar(min = 0, max = length(Extents), style = 3) # establish progress bar
     for(Krig_Iter in 1:length(Extents)){
@@ -375,7 +376,7 @@ FUN_Krig <- function(Var_short = "AT", KrigingEquation = "ERA ~ DEM"){
     # Kriged_ras <- mask(Kriged_ras, Land_shp)
     raster::writeRaster(Kriged_ras, filename = paste0("K_", Name), format = "GTiff", overwrite = TRUE)
     print(paste("Removing temporary directory", Name))
-    End <- Sys.Date()
+    End <- Sys.time()
     print(End-Begin)
     unlink(Dir.Date, recursive = TRUE)
   } # end of Dates loop
